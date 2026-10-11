@@ -1,0 +1,151 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 SigPro Labs, LLC
+# Project-critical build configuration. The live sdkconfig is UNTRACKED —
+# every setting this project depends on must live here or it silently reverts
+# on a config regen (scripts/check_config_drift.py guards against that).
+#
+# Hardware truths for the ESP32-S3 module — PSRAM octal mode, 64 KB data
+# cache, QIO flash @16 MB, SPIRAM allocator — live in
+# sdkconfig.defaults.esp32s3. ONE owner per option: this file carries the
+# chip-agnostic project policy only. (The per-chip defaults for seven other
+# chips were blink-template residue, deleted 2026-09-05.)
+
+# 5. Memory-allocator measurements (the options themselves live in the
+#    esp32s3 file; the paid-for measurement notes live here)
+#    DO NOT trim CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM. Tried 10 -> 6 on
+#    hardware 2026-07-27 expecting ~6 KB back (they are DMA-capable internal,
+#    the right pool). It went BACKWARDS: largest free block at wifi-up fell
+#    from 12,288 to 8,192 B in std mode, gating httpd in a configuration that
+#    previously started fine. Fewer static buffers pushes WiFi onto its
+#    DYNAMIC_RX_BUFFER_NUM=32 pool, and that churn fragments the heap far worse
+#    than a few large blocks allocated once at init. Reverted to the IDF
+#    default of 10. If anything, the lever worth testing is reducing the
+#    DYNAMIC count, not the static one.
+#
+#    NOT SET, and deliberately so — both were tried on hardware 2026-07-27 and
+#    MEASURED to change the largest free internal block at wifi-up by exactly
+#    zero (12,288 B before and after, three builds):
+#      CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096
+#      CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+#    The block that httpd needs is DMA-capable internal RAM (I2S descriptors,
+#    WiFi static RX buffers) which cannot be moved to PSRAM, so general-heap
+#    knobs cannot reach it. The httpd startup problem is fixed by ORDER instead
+#    — httpd_start now runs BEFORE esp_wifi_init() (wifi_manager.c), while the
+#    heap is still whole. (An earlier note here named a
+#    web_server_reserve_httpd_stack() at the top of app_main: that variant was
+#    tried and BOOT-LOOPED — it starved SD/I2S/USB init — and does not exist.)
+#    Re-evaluate the two allocator knobs only against a sustained-transfer
+#    test, never against boot heap: on that basis TRY_ALLOCATE_WIFI_LWIP is
+#    now set (see sdkconfig.defaults.esp32s3).
+
+# 6. Native USB via TinyUSB (CDC console + fast transfer). The console is driven
+#    manually over TinyUSB CDC0 (esp_tusb_init_console) — NOT the built-in REPL —
+#    so the primary console must be NONE: it must NOT pre-bind stdio fds 0/1/2, or
+#    the Feb-2026 fd-rotation bug (stdin=1/stdout=2/stderr=0) returns. esp_tusb is
+#    the single thing that binds 0/1/2, after CDC is up.
+#    NOTE: sdkconfig is gitignored. After changing these, DELETE the live sdkconfig
+#    and rebuild so a stale CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG cannot resurrect.
+CONFIG_ESP_CONSOLE_NONE=y
+# Pin the secondary console OFF too. By default Kconfig resolves a secondary
+# USB-Serial-JTAG console; with TinyUSB owning the PHY it cannot work, and leaving
+# it enabled lets a stale CONFIG_ESP_CONSOLE_*_USB_SERIAL_JTAG resurrect on regen.
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+CONFIG_TINYUSB_CDC_ENABLED=y
+# Single CDC: console + raw-binary fast transfer share CDC0 (a 2-CDC composite
+# destabilized CDC0 on the dev host; throughput is the same on one channel).
+CONFIG_TINYUSB_CDC_COUNT=1
+CONFIG_TINYUSB_CDC_RX_BUFSIZE=512
+# 8 KB TX FIFO (was 512 B originally, 16 KB 2026-07-06..08): the flow-controlled
+# xfer writer parks a FreeRTOS tick per FIFO-full retry, so 512 B/tick capped the
+# link (~512 KB/s at 1 kHz tick; ~51 KB/s on a drifted 100 Hz build — Dan's
+# throttled-live repro). 8 KB keeps the ceiling >= ~800 KB/s even at a 100 Hz
+# tick (live stream needs 375 KB/s; floor 4 KB asserted in serial_xfer.c).
+# Trimmed from 16 KB 2026-07-08: internal RAM exhaustion broke httpd — see
+# "Internal RAM budget" in docs/ARCHITECTURE.md before growing this again.
+CONFIG_TINYUSB_CDC_TX_BUFSIZE=8192
+
+# 7. Custom partition table (2MB app partitions + audio_store raw partition)
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# 8. 1ms FreeRTOS tick (default 100Hz/10ms). Lets the USB fast-transfer feed loop
+#    wait ~1ms (not 10ms) on a full CDC TX FIFO -> ~5x throughput. Audio is I2S-DMA
+#    driven, unaffected by tick rate.
+CONFIG_FREERTOS_HZ=1000
+
+# 9. FATFS (SD recording path). Mirrored from menuconfig — the live sdkconfig is
+#    untracked, so anything project-critical must live here.
+#    - 4096-byte max sector (FF_MAX_SS) for the SD streaming write path
+#    - two volumes: SD (drive 0) + spiflash (drive 1)
+#    - LFN buffers on heap
+CONFIG_FATFS_VOLUME_COUNT=2
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_MAX_LFN=255
+CONFIG_FATFS_SECTOR_4096=y
+
+# 9f. LwIP TCP window. WAS 65535 (11.4x the IDF default) "to sustain
+#     SD-download throughput" — but that is what BROKE the download: 64 KB of
+#     TCP segments per socket allocate internal-first (SPIRAM_MALLOC_
+#     ALWAYSINTERNAL=16384), against a steady state of ~18 KB free / 7 KB
+#     largest once httpd + WiFi are up, so a sustained transfer starves the
+#     heap and stalls. Measured 2026-09-06: download of a 2,304,044 B file
+#     stopped at 1,409,024 B. 11680 = 8 x 1460 (8 MSS) — still a deep enough
+#     window to keep the pipe full at this link rate, small enough to fit.
+#     Judge any change here against a sustained transfer, never boot heap.
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=11680
+CONFIG_LWIP_TCP_WND_DEFAULT=11680
+
+# 9b. ISR stack: the pre-regeneration sdkconfig carried 2096 (vs the 1536 IDF
+#     default). With SDMMC + I2S + TinyUSB + WiFi ISRs stacked up, keep the
+#     larger value rather than risk an intermittent ISR stack overflow.
+CONFIG_FREERTOS_ISR_STACKSIZE=2096
+
+# 9d. Event-loop task stack. The IDF default (2304) overflowed during WiFi
+#     bring-up: WiFi/IP event handlers ESP_LOG through the TinyUSB CDC console
+#     path (log hook + newlib vfprintf + custom VFS), which is heavier than the
+#     stock console path. Proven by coredump: "stack overflow in task sys_evt"
+#     panic-looped the board ~2 s after association, every boot.
+CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4608
+
+# 9c. Crash forensics: with the primary console NONE (TinyUSB owns stdio) panic
+#     output goes nowhere, so persist panics to the coredump partition (64 KB
+#     tail of flash) and report the reset reason in the console banner.
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
+CONFIG_ESP_COREDUMP_CHECKSUM_CRC32=y
+
+# 9e. Core isolation: core 1 is reserved for the real-time audio pipeline
+#     (rx=11 / dsp=9 / tx=12). Pin the remaining floating system tasks to
+#     core 0 — most importantly lwIP's tcpip task (priority 18!), which with
+#     no affinity can land on core 1 and preempt the whole audio chain during
+#     WiFi traffic. (WiFi driver + esp_timer + main are already core 0.)
+CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU0=y
+CONFIG_FREERTOS_TIMER_TASK_AFFINITY_CPU0=y
+
+# 10. WiFi brownout mitigation: cap the radio's maximum TX power at the PHY level
+#     (IDF default: 20 dBm). Full-power association-retry bursts were collapsing a
+#     marginal USB supply (POWERON reset loop). 13 dBm cuts
+#     peak TX current substantially and still gives ample same-room range. The
+#     runtime default is lower still and tunable: see `wifi power` in web_server.c.
+CONFIG_ESP_PHY_MAX_WIFI_TX_POWER=13
+# 11. WiFi RX hot path moved from IRAM to flash (2026-10-05). ESP-IDF v5.5.5 grew
+#     static internal RAM by 4.9 KB, which halved the largest free internal
+#     block at wifi-up (14,336 to 7,680 B on Rev A, AP mode). This frees
+#     10.3 KB of IRAM: wifi-up measured 24,119 free / 15,872 largest, above
+#     the pre-upgrade figure. It costs some WiFi RX throughput, not yet
+#     measured on a clean link. See the 2026-10-05 entry in the internal RAM
+#     measurement log (docs/ARCHITECTURE.md).
+# CONFIG_ESP_WIFI_RX_IRAM_OPT is not set
+# USB descriptor branding (2026-07-06 design review): the board previously
+# enumerated as "Espressif Device" from "Espressif Systems" with serial
+# "123456". Ship-facing polish: identify as SigPro Labs RadioSonic.
+# NOTE: takes effect on the next full build (idf.py fullclean or delete
+# build/ after changing defaults; sdkconfig must be regenerated).
+# Per-unit unique serial (from chip MAC) is a code change, tracked in the
+# design-review report.
+# These three strings belong to the product identity listed in
+# main/product_identity.h: a fork given to others changes them too
+# (TRADEMARKS.md).
+CONFIG_TINYUSB_DESC_MANUFACTURER_STRING="SigPro Labs"
+CONFIG_TINYUSB_DESC_PRODUCT_STRING="RadioSonic"
+CONFIG_TINYUSB_DESC_CDC_STRING="RadioSonic Console"

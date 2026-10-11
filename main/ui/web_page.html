@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: MIT -->
+<!-- Copyright (c) 2026 SigPro Labs, LLC -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>RadioSonic</title>
+  <style>
+    /* Dark theme palette */
+    :root {
+      --bg: #1a1a2e;   /* page background */
+      --card: #16213e; /* card background */
+      --acc: #0f3460;  /* accent: borders, idle buttons */
+      --hi: #e94560;   /* highlight: headings, active buttons */
+      --tx: #eee;      /* body text */
+      --mu: #888;      /* muted text */
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--tx);
+      font-family: monospace;
+      padding: .8rem;
+    }
+
+    h1 {
+      color: var(--hi);
+      margin-bottom: .8rem;
+    }
+
+    h2 {
+      color: var(--hi);
+      font-size: .88rem;
+      text-transform: uppercase;
+      margin-bottom: .4rem;
+    }
+
+    /* Responsive card grid */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+      gap: .7rem;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--acc);
+      border-radius: 6px;
+      padding: .75rem;
+    }
+
+    button {
+      background: var(--acc);
+      color: var(--tx);
+      border: none;
+      padding: .3rem .65rem;
+      border-radius: 4px;
+      cursor: pointer;
+      margin: .12rem;
+      font-family: monospace;
+      font-size: .85rem;
+    }
+
+    button:hover {
+      background: var(--hi);
+    }
+
+    button.on {
+      background: var(--hi);
+    }
+
+    input, select, textarea {
+      background: #0a0a1a;
+      color: var(--tx);
+      border: 1px solid var(--acc);
+      border-radius: 4px;
+      padding: .28rem;
+      font-family: monospace;
+      font-size: .85rem;
+    }
+
+    input[type=text], input[type=number], input[type=password], select {
+      width: 100%;
+    }
+
+    textarea {
+      width: 100%;
+      height: 90px;
+    }
+
+    label {
+      color: var(--mu);
+      font-size: .8rem;
+    }
+
+    /* One label + control per line */
+    .row {
+      display: flex;
+      gap: .35rem;
+      align-items: center;
+      margin: .18rem 0;
+    }
+
+    .row label {
+      min-width: 32px;
+      flex-shrink: 0;
+    }
+
+    .row input, .row select {
+      flex: 1;
+      min-width: 0;
+    }
+
+    /* Status values */
+    .sv {
+      color: #4fc3f7;
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid #333;
+      margin: .45rem 0;
+    }
+
+    .log {
+      color: #4fc3f7;
+      font-size: .75rem;
+      margin-top: .3rem;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <h1>&#9096; RadioSonic DSP</h1>
+
+  <div class="grid">
+
+    <!-- Status: live summary line, refreshed every 2 s -->
+    <div class="card">
+      <h2>Status</h2>
+      <div id="sb"><span class="sv">connecting...</span></div>
+    </div>
+
+    <!-- Mode + input/gain. Mode buttons are built at load from GET /api/modes. -->
+    <div class="card">
+      <h2>Mode</h2>
+      <div id="modeButtons"></div>
+      <hr>
+      <h2>Input / Gain</h2>
+      <div class="row">
+        <select id="isel">
+          <option value="mic">Mic</option>
+          <option value="diff">Line in</option>
+        </select>
+        <button onclick="setInput()">Set</button>
+      </div>
+      <div class="row">
+        <label>Gain in</label>
+        <input id="gain" type="number" min="0" max="47" value="0">
+        <button onclick="setGainIn()">Set</button>
+      </div>
+      <div class="row">
+        <label>Gain out</label>
+        <input id="gaino" type="number" min="-6" max="29" value="0">
+        <button onclick="setGainOut()">Set</button>
+      </div>
+    </div>
+
+    <!-- Effect cards: built at load from GET /api/modes (see loadEffectPanels) -->
+    <div id="fxPanels" style="display:contents"></div>
+
+    <!-- Record / Playback: flash or SD backend, pre/post-DSP tap, live stream -->
+    <div class="card">
+      <h2>Record / Playback</h2>
+      <div class="row">
+        <label>Source</label>
+        <label><input type="radio" name="avsrc" value="flash" checked onchange="onSourceChange()"> Flash</label>
+        <label style="margin-left:.6rem"><input type="radio" name="avsrc" value="sd" onchange="onSourceChange()"> SD</label>
+      </div>
+      <div id="sdrow" style="display:none;margin-top:.3rem">
+        <div class="row">
+          <input id="avpath" type="text" placeholder="/sdcard/rec.wav" style="flex:1;font-size:.8rem">
+          <button onclick="pickSdFile()" title="Pick from SD">&#128193;</button>
+        </div>
+        <select id="avpick" size="4" style="width:100%;margin-top:.25rem;font-size:.8rem;display:none"></select>
+      </div>
+      <hr style="margin:.4rem 0">
+      <div class="row">
+        <label>Tap</label>
+        <select id="avtap">
+          <option value="pre">Pre-DSP (raw)</option>
+          <option value="post">Post-DSP (filtered)</option>
+        </select>
+        <button onclick="openLiveStream()" title="Stream live over Wi-Fi">&#128225; Live</button>
+      </div>
+      <div class="row" style="margin-top:.35rem">
+        <button id="brec" onclick="recordStart()">&#9679; Rec</button>
+        <button onclick="recordStop()">&#9632; Stop Rec</button>
+      </div>
+      <div class="row" style="margin-top:.35rem">
+        <button id="bplay" onclick="playStart()">&#9654; Play</button>
+        <button onclick="playStop()">&#9632; Stop</button>
+        <label style="margin-left:.5rem"><input type="checkbox" id="avloop"> Loop</label>
+      </div>
+      <hr style="margin:.4rem 0">
+      <button onclick="listenInBrowser()">&#128266; Listen in Browser</button>
+      <audio id="avaud" controls style="width:100%;margin-top:.35rem"></audio>
+      <div id="avst" class="log" style="margin-top:.3rem">idle</div>
+    </div>
+
+    <!-- File transfer: upload to the SD card or the flash sample slot -->
+    <div class="card">
+      <h2>File Transfer</h2>
+      <label>Upload to SD card:</label>
+      <div class="row">
+        <input type="file" id="sdf" style="flex:1">
+        <button onclick="uploadToSd()">Upload</button>
+      </div>
+      <hr>
+      <label>Flash sample (raw 48kHz/32-bit/stereo PCM):</label>
+      <div class="row">
+        <input type="file" id="flf" style="flex:1">
+        <button onclick="uploadToFlash()">Upload</button>
+      </div>
+      <div id="ulog" class="log"></div>
+    </div>
+
+    <!-- SD card browser: file list with download links -->
+    <div class="card">
+      <h2>SD Card Files</h2>
+      <button onclick="refreshSdList()">Refresh</button>
+      <div id="sdls" class="log" style="max-height:160px;overflow-y:auto;margin-top:.3rem"></div>
+    </div>
+
+    <!-- WiFi: join a network (STA) or fall back to the device's own AP -->
+    <div class="card">
+      <h2>WiFi</h2>
+      <div id="winfo" class="sv">-</div>
+      <hr>
+      <label>Connect to network (saves to NVS, device restarts):</label>
+      <div class="row"><label>SSID</label><input id="wssid" type="text"></div>
+      <div class="row"><label>Pass</label><input id="wpass" type="password"></div>
+      <button onclick="wifiSaveSta()">Save &amp; Connect</button>
+      <button onclick="wifiForceAp()">Force AP mode</button>
+    </div>
+
+  </div>
+
+  <script>
+    /* Shorthand: element lookup by id. */
+    const byId = (id) => document.getElementById(id);
+
+    /* POST "key=value&..." form data to a firmware endpoint. */
+    async function postForm(url, fields) {
+      const body = Object.entries(fields)
+        .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+        .join('&');
+      return fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body
+      });
+    }
+
+    /* ---------- Mode buttons (built from the firmware's mode registry) ---------- */
+
+    /* GET /api/modes returns, in registry order,
+       [{"name":"bypass","label":"Bypass","config":false,"panel":false},...].
+       Build one button per mode inside #modeButtons (button ids stay
+       "b-"+name), then the effect cards from the same list. */
+    async function loadModes() {
+      const container = byId('modeButtons');
+      let modes;
+      try {
+        modes = await (await fetch('/api/modes')).json();
+        container.innerHTML = '';
+        for (const mode of modes) {
+          const button = document.createElement('button');
+          button.id = 'b-' + mode.name;
+          button.dataset.mode = mode.name;
+          if (mode.label && mode.label.length <= 12) {
+            button.textContent = mode.label;
+          } else {
+            /* Fall back to the mode name: capitalized, underscores as spaces. */
+            button.textContent = mode.name.charAt(0).toUpperCase() + mode.name.slice(1).replace(/_/g, ' ');
+          }
+          button.onclick = () => setMode(mode.name);
+          container.appendChild(button);
+        }
+        refreshStatus(); /* highlight the active mode right away */
+      } catch (e) {
+        container.textContent = '(mode list unavailable)';
+        return;
+      }
+      /* Separate try: a broken effect card must not take the mode buttons
+         down with it. */
+      try {
+        await loadEffectPanels(modes);
+      } catch (e) {
+        byId('fxPanels').appendChild(
+          fxNoteCard('Effects', 'effect cards failed to load: ' + e.message));
+      }
+    }
+
+    /* ---------- Status card ---------- */
+
+    /* Poll /api/status and repaint the summary line, the active-mode button
+       highlight, and the Rec/Play button tints. Runs on a 2 s interval. */
+    async function refreshStatus() {
+      try {
+        const s = await (await fetch('/api/status')).json();
+
+        document.querySelectorAll('#modeButtons button').forEach((button) => {
+          button.classList.toggle('on', button.dataset.mode === s.mode);
+        });
+
+        /* Effect parameters live behind GET /api/fx/<name> (per-effect cards
+           below); the one generic live value is the framework meter, shown
+           when the current effect (an analyzer) is publishing with a lock. */
+        const m = s.meter;
+        byId('sb').innerHTML =
+          `<div><span class='sv'>${s.mode.toUpperCase()}</span>` +
+          ` &nbsp;In:<span class='sv'>${s.input}</span>` +
+          ` Gain:<span class='sv'>${s.gain}dB</span>` +
+          ` Out:<span class='sv'>${s.gain_out}dB</span>` +
+          ` SD:<span class='sv'>${s.sd}</span></div>` +
+          (m && m.conf > 0
+            ? `<div>Meter:<span class='sv'>${m.value.toFixed(2)}</span>` +
+              ` conf:<span class='sv'>${m.conf.toFixed(2)}</span>` +
+              ` <span style='color:var(--mu)'>(-1 left .. +1 right)</span></div>`
+            : '');
+
+        byId('winfo').textContent = s.wifi;
+
+        const playButton = byId('bplay');
+        const recordButton = byId('brec');
+        if (playButton) playButton.style.background = s.playing ? 'var(--hi)' : '';
+        if (recordButton) recordButton.style.background = s.recording ? '#f44' : '';
+      } catch (e) {
+        /* Device unreachable; the 2 s poll will retry. */
+      }
+    }
+
+    /* ---------- Mode / input / gain ---------- */
+
+    async function setMode(mode) {
+      await postForm('/api/mode', { mode: mode });
+      refreshStatus();
+    }
+
+    async function setInput() {
+      await postForm('/api/input', { input: byId('isel').value });
+      refreshStatus();
+    }
+
+    async function setGainIn() {
+      await postForm('/api/gain', { gain: byId('gain').value });
+      refreshStatus();
+    }
+
+    async function setGainOut() {
+      await postForm('/api/gain', { gain_out: byId('gaino').value });
+      refreshStatus();
+    }
+
+    /* ---------- Effect config (generic /api/fx/<name> transport) ----------
+       Effect cards are built at load from the firmware's effect registry
+       (GET /api/modes, see loadEffectPanels below); this page holds no code
+       for any particular effect. Each effect's parameters travel as its own
+       text format: the same directive lines the settings store persists.
+       byId, postForm, fxPost, fxGet and refreshStatus are the page API that
+       effect panel fragments may call. fxPost returns the response body
+       ("OK" or an error message); fxGet returns the effect's config text. */
+
+    async function fxPost(name, text) {
+      const response = await fetch('/api/fx/' + name, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: text
+      });
+      return response.text();
+    }
+
+    async function fxGet(name) {
+      return (await fetch('/api/fx/' + name)).text();
+    }
+
+    /* ---------- Effect cards (built from the effect registry) ---------- */
+
+    /* One card per effect, in registry order. "panel":true means the effect
+       serves its own HTML fragment at GET /api/fx/<name>/panel; "config":true
+       alone gets the generic text card below; neither (e.g. bypass) gets no
+       card. Fetches run one at a time: that keeps registry order and does
+       not flood the device's small HTTP server. */
+    async function loadEffectPanels(modes) {
+      const container = byId('fxPanels');
+      container.innerHTML = '';
+      for (const mode of modes) {
+        if (mode.panel) {
+          let html = null;
+          try {
+            const response = await fetch('/api/fx/' + mode.name + '/panel');
+            if (response.ok) html = await response.text();
+          } catch (e) {
+            /* Network error: handled like a missing panel below. */
+          }
+          if (html !== null) {
+            fxAddPanelCard(container, mode.name, html);
+          } else if (mode.config) {
+            await fxAddGenericCard(container, mode);
+          } else {
+            const card = fxNoteCard(fxLabel(mode), 'panel failed to load');
+            card.dataset.fx = mode.name;
+            container.appendChild(card);
+          }
+        } else if (mode.config) {
+          await fxAddGenericCard(container, mode);
+        }
+      }
+    }
+
+    /* Effect-supplied panel. innerHTML leaves <script> elements inert, so each
+       one is swapped for a fresh copy, which the browser runs on insertion.
+       The card is appended first so the scripts find their elements. */
+    function fxAddPanelCard(container, name, html) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.dataset.fx = name;
+      card.innerHTML = html;
+      container.appendChild(card);
+      card.querySelectorAll('script').forEach((inert) => {
+        const script = document.createElement('script');
+        script.textContent = inert.textContent;
+        inert.replaceWith(script);
+      });
+    }
+
+    /* Card heading: the registry label, or the bare name if it has none. */
+    function fxLabel(mode) {
+      return mode.label || mode.name;
+    }
+
+    /* Empty card with a heading. Labels are arbitrary text: textContent only. */
+    function fxNewCard(title) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      const heading = document.createElement('h2');
+      heading.textContent = title;
+      card.appendChild(heading);
+      return card;
+    }
+
+    /* Heading plus one line of text, for a card that could not be built. */
+    function fxNoteCard(title, text) {
+      const card = fxNewCard(title);
+      const note = document.createElement('div');
+      note.className = 'log';
+      note.textContent = text;
+      card.appendChild(note);
+      return card;
+    }
+
+    /* ---------- Generic effect card ----------
+       For an effect with a text config and no panel of its own: a textarea
+       of directive lines with Read, Load file and Apply. Element ids are
+       fx-<name>-text, fx-<name>-file and fx-<name>-log. */
+
+    async function fxAddGenericCard(container, mode) {
+      const name = mode.name;
+      const card = fxNewCard(fxLabel(mode));
+      card.dataset.fx = name;
+
+      const label = document.createElement('label');
+      label.htmlFor = 'fx-' + name + '-text';
+      label.textContent = 'Settings (one directive per line):';
+
+      const text = document.createElement('textarea');
+      text.id = 'fx-' + name + '-text';
+
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.style.marginTop = '.25rem';
+      row.style.flexWrap = 'wrap'; /* four controls do not fit a narrow card */
+      const file = document.createElement('input');
+      file.type = 'file';
+      file.id = 'fx-' + name + '-file';
+      file.accept = '.txt';
+      file.style.flex = '1 1 9rem';
+      row.append(
+        fxButton('Read', () => fxCardRead(name)),
+        file,
+        fxButton('Load file', () => fxCardLoadFile(name)),
+        fxButton('Apply', () => fxCardApply(name)));
+
+      const log = document.createElement('div');
+      log.id = 'fx-' + name + '-log';
+      log.className = 'log';
+
+      card.append(label, text, row, log);
+      container.appendChild(card);
+      await fxCardRead(name);
+    }
+
+    function fxButton(caption, onclick) {
+      const button = document.createElement('button');
+      button.textContent = caption;
+      button.onclick = onclick;
+      return button;
+    }
+
+    /* Fill the card's textarea with the effect's current config. */
+    async function fxCardRead(name) {
+      try {
+        byId('fx-' + name + '-text').value = await fxGet(name);
+      } catch (e) {
+        byId('fx-' + name + '-log').textContent = 'Read failed: ' + e.message;
+      }
+    }
+
+    /* POST the textarea without blank lines or '#' comments; show the reply. */
+    async function fxCardApply(name) {
+      const log = byId('fx-' + name + '-log');
+      const lines = byId('fx-' + name + '-text').value.split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith('#'));
+      if (!lines.length) {
+        log.textContent = 'Nothing to apply.';
+        return;
+      }
+      log.textContent = 'Applying...';
+      try {
+        log.textContent = await fxPost(name, lines.join('\n'));
+      } catch (e) {
+        log.textContent = 'Apply failed: ' + e.message;
+      }
+      refreshStatus();
+    }
+
+    /* Load the chosen .txt file into the textarea, then apply it. */
+    async function fxCardLoadFile(name) {
+      const file = byId('fx-' + name + '-file').files[0];
+      if (!file) return;
+      byId('fx-' + name + '-text').value = await file.text();
+      await fxCardApply(name);
+    }
+
+    /* ---------- File transfer (uploads) ---------- */
+
+    async function uploadToSd() {
+      const file = byId('sdf').files[0];
+      if (!file) return;
+      byId('ulog').textContent = `Uploading ${file.name} (${(file.size / 1024).toFixed(1)} KB)...`;
+      try {
+        const response = await fetch(`/api/upload/sd?name=${encodeURIComponent(file.name)}`, {
+          method: 'POST',
+          body: file
+        });
+        byId('ulog').textContent = await response.text();
+      } catch (e) {
+        byId('ulog').textContent = 'Upload failed: ' + e.message;
+      }
+    }
+
+    async function uploadToFlash() {
+      const file = byId('flf').files[0];
+      if (!file) return;
+      byId('ulog').textContent = `Uploading flash sample (${(file.size / 1024).toFixed(1)} KB)...`;
+      const response = await fetch('/api/upload/flash', { method: 'POST', body: file });
+      byId('ulog').textContent = await response.text();
+    }
+
+    /* ---------- SD card file list ---------- */
+
+    async function refreshSdList() {
+      byId('sdls').textContent = 'Loading...';
+      try {
+        const files = await (await fetch('/api/files')).json();
+        if (!files.length) {
+          byId('sdls').textContent = '(empty)';
+          return;
+        }
+        byId('sdls').innerHTML = files.map((file) =>
+          `<div>${file.name} <span style='color:var(--mu)'>${(file.size / 1024).toFixed(1)} KB</span> ` +
+          `<a href='/api/download/sd?name=${encodeURIComponent(file.name)}' style='color:var(--hi)' download='${file.name}'>&#8595;</a></div>`
+        ).join('');
+      } catch (e) {
+        byId('sdls').textContent = 'Error: ' + e.message;
+      }
+    }
+
+    /* ---------- WiFi ---------- */
+
+    async function wifiSaveSta() {
+      await postForm('/api/wifi/sta', { ssid: byId('wssid').value, pass: byId('wpass').value });
+      byId('winfo').textContent = 'Saved. Device restarting...';
+    }
+
+    async function wifiForceAp() {
+      await postForm('/api/wifi/ap', {});
+      byId('winfo').textContent = 'Switching to AP... reconnect to RadioSonic';
+    }
+
+    /* ---------- Record / Playback ---------- */
+
+    /* Which backend is selected: 'flash' or 'sd'. */
+    function playbackSource() {
+      return document.querySelector('input[name=avsrc]:checked').value;
+    }
+
+    function onSourceChange() {
+      const usingSd = playbackSource() === 'sd';
+      byId('sdrow').style.display = usingSd ? '' : 'none';
+      if (usingSd && !byId('avpath').value) byId('avpath').value = '/sdcard/rec.wav';
+    }
+
+    /* Populate the SD file picker under the path box. */
+    async function pickSdFile() {
+      const picker = byId('avpick');
+      picker.style.display = '';
+      picker.innerHTML = '<option>Loading...</option>';
+      try {
+        const files = await (await fetch('/api/files')).json();
+        if (!files.length) {
+          picker.innerHTML = '<option>(empty)</option>';
+          return;
+        }
+        picker.innerHTML = files.map((file) =>
+          '<option value="/sdcard/' + file.name + '">' + file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)</option>'
+        ).join('');
+        picker.onchange = function () {
+          byId('avpath').value = picker.value;
+        };
+      } catch (e) {
+        picker.innerHTML = '<option>Error</option>';
+      }
+    }
+
+    /* Open the chunked live WAV stream in a new tab. */
+    function openLiveStream() {
+      window.open('/api/rec/live?tap=' + byId('avtap').value, '_blank');
+    }
+
+    async function recordStart() {
+      const backend = playbackSource();
+      const path = backend === 'sd' ? (byId('avpath').value || '/sdcard/rec.wav') : '';
+      const body = 'backend=' + backend + '&tap=' + byId('avtap').value +
+        (path ? '&path=' + encodeURIComponent(path) : '');
+      byId('avst').textContent = 'Starting recording...';
+      try {
+        const response = await fetch('/api/rec/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body
+        });
+        byId('avst').textContent = await response.text();
+      } catch (e) {
+        byId('avst').textContent = 'Error: ' + e.message;
+      }
+    }
+
+    async function recordStop() {
+      byId('avst').textContent = 'Stopping (writing to ' + playbackSource() + '...)';
+      try {
+        const response = await fetch('/api/rec/stop', { method: 'POST', body: '' });
+        byId('avst').textContent = await response.text();
+      } catch (e) {
+        byId('avst').textContent = 'Error: ' + e.message;
+      }
+    }
+
+    async function playStart() {
+      const backend = playbackSource();
+      const path = backend === 'sd' ? (byId('avpath').value || '/sdcard/rec.wav') : '';
+      const loop = byId('avloop').checked ? '1' : '0';
+      const body = 'backend=' + backend + '&loop=' + loop +
+        (path ? '&path=' + encodeURIComponent(path) : '');
+      byId('avst').textContent = 'Starting playback...';
+      try {
+        const response = await fetch('/api/play/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body
+        });
+        byId('avst').textContent = await response.text();
+      } catch (e) {
+        byId('avst').textContent = 'Error: ' + e.message;
+      }
+    }
+
+    async function playStop() {
+      try {
+        await fetch('/api/play/stop', { method: 'POST', body: '' });
+        byId('avst').textContent = 'Stopped';
+      } catch (e) {
+        byId('avst').textContent = 'Error: ' + e.message;
+      }
+    }
+
+    /* Play the recording through the browser's own audio element. */
+    function listenInBrowser() {
+      const backend = playbackSource();
+      const audio = byId('avaud');
+      if (backend === 'flash') {
+        audio.src = '/api/flash/wav';
+      } else {
+        const path = byId('avpath').value || '/sdcard/rec.wav';
+        const name = path.replace('/sdcard/', '');
+        audio.src = '/api/download/sd?name=' + encodeURIComponent(name);
+      }
+      audio.load();
+      audio.play().catch(function (e) {
+        byId('avst').textContent = 'Browser play: ' + e.message;
+      });
+    }
+
+    /* ---------- Startup ---------- */
+
+    loadModes();
+    refreshStatus();
+    refreshSdList();
+    setInterval(refreshStatus, 2000);
+  </script>
+</body>
+</html>

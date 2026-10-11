@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 SigPro Labs, LLC
+# (blink-example relics removed 2026-07-06 — dead Kconfig options from the
+# project's template origins)
+
+# 1. Enable PSRAM Driver
+CONFIG_SPIRAM=y
+
+# 2. Force Octal Mode for RAM (Required for 'R8' modules)
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+
+# 3. Force 64KB Data Cache (Required for Octal PSRAM)
+# (only the choice symbol — DATA_CACHE_SIZE is derived by Kconfig)
+CONFIG_ESP32S3_DATA_CACHE_64KB=y
+
+# 4. Force Quad Mode for Flash (Required for 'N8' modules)
+# WARNING: Setting this to OPI will brick the bootloader on WROOM-1
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+# (was misspelled FLASH_FREQ_80M — a dead pin; 80 MHz held only by IDF default)
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+
+# 5. Memory Allocator Settings
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_MEMTEST=y
+# Do NOT trim ESP_WIFI_STATIC_RX_BUFFER_NUM — measured to make fragmentation
+# WORSE (12288 -> 8192). See sdkconfig.defaults.
+# SPIRAM_MALLOC_ALWAYSINTERNAL stays at the IDF default — measured a no-op for
+# the httpd startup block (that block is DMA-capable internal RAM, which no
+# general-heap knob can reach; the startup problem was fixed by ORDER instead,
+# see web_server.c / wifi_manager.c).
+# SPIRAM_TRY_ALLOCATE_WIFI_LWIP is now SET: also a no-op at boot (same reason),
+# but it targets lwIP's RUNTIME churn, which is the sustained-transfer path
+# that truncates SD downloads — the case the 2026-07-27 boot-heap measurement
+# explicitly could not judge. Paired with the TCP window trim in
+# sdkconfig.defaults; judge both against a sustained transfer.
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+# Interrupt watchdog. IDF v5.5.5 raised the default to 800 ms on every PSRAM
+# build because heap integrity checks over a large PSRAM can outlast 300 ms.
+# This firmware never runs those checks, and every build before the upgrade
+# used 300 ms. Pinned so a regenerated sdkconfig keeps that value.
+CONFIG_ESP_INT_WDT_TIMEOUT_MS=300
+
+# (FATFS + LwIP settings are chip-agnostic project policy — they live in
+#  sdkconfig.defaults, one owner per option.)

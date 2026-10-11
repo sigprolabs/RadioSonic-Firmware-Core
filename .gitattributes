@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 SigPro Labs, LLC
+* text=auto
+
+# cmd.exe can misparse batch files with LF-only line endings.
+*.cmd    text eol=crlf
+*.bat    text eol=crlf
+
+# Shipped binaries — the factory image bytes are a manufacturing deliverable;
+# never let text normalization or diff heuristics touch them.
+*.bin    binary
+*.pdf    binary
+*.png    binary
+*.zip    binary
+
+# Generated artifacts (keep diffs/linguist stats focused on the sources)
+docs/MANUAL.pdf linguist-generated

@@ -1,0 +1,89 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 SigPro Labs, LLC
+# =========================
+# ESP-IDF / CMake build output
+# =========================
+build*/
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+compile_commands.json
+
+# Ninja / Make
+.ninja_*
+build.ninja
+rules.ninja
+Makefile
+
+# Kconfig / menuconfig generated (keep sdkconfig.defaults.*, ignore generated)
+sdkconfig
+sdkconfig.old
+sdkconfig.orig
+sdkconfig.bak
+sdkconfig.bak.*
+sdkconfig.old.*
+sdkconfig.last
+sdkconfig.defaults.*.bak
+sdkconfig.cmake
+
+# Partition table CSV generated binary outputs (if you generate them in-build)
+# (Keep your source partition CSVs committed.)
+*.bin
+*.elf
+*.map
+*.hex
+
+# IDF build logs / flash artifacts
+flasher_args.json
+flash_args
+*.log
+
+# =========================
+# Python / virtual envs (you use .venv)
+# =========================
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+
+# =========================
+# VS Code / tooling
+# =========================
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# The .vscode negations above keep the shared build/flash/debug conveniences
+# for Espressif's VS Code extension; machine-local tweaks stay untracked.
+
+# =========================
+# OS / editor junk
+# =========================
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# =========================
+# IDF Component Manager
+# =========================
+# Downloaded dependencies (restored by `idf.py reconfigure` from
+# main/idf_component.yml + dependencies.lock). dependencies.lock itself
+# IS committed so builds are reproducible.
+managed_components/
+
+
+
+# =========================
+# Vendor datasheets (copyrighted — link them, never commit them)
+# =========================
+/*.pdf
+

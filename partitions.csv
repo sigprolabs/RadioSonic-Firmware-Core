@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 SigPro Labs, LLC
+# Name,   Type, SubType, Offset,   Size,    Flags
+nvs,      data, nvs,     0x9000,   0x6000,
+phy_init, data, phy,     0xf000,   0x1000,
+factory,  app,  factory, 0x10000,  0x200000,
+audio_raw,data, 0xFF,    0x210000, 0xDE0000,
+coredump, data, coredump,0xFF0000, 0x10000,

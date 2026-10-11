@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 SigPro Labs, LLC
+## IDF Component Manager manifest
+## Managed dependencies for the `main` component.
+dependencies:
+  ## TinyUSB stack + Espressif CDC-ACM/console/MSC wrappers.
+  ## Provides the native-USB CDC console (replaces USB-Serial-JTAG) and the
+  ## fast raw-binary transfer path. See docs/SERIAL_XFER.md and the migration
+  ## plan. esp_tinyusb pulls in the underlying `tinyusb` component.
+  espressif/esp_tinyusb: "^2.2.0"
+

@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 SigPro Labs, LLC
+menu "RadioSonic Board Configuration"
+
+    choice BOARD_REVISION
+        prompt "PCB revision"
+        default BOARD_REVISION_REVA
+        help
+            Select the hardware revision to build for.
+            Rev 1: SDSPI, single GPIO status LED, boot button only.
+            Rev 2: SDMMC 4-bit, SK6805 RGB LED strip, 5 additional buttons.
+            Rev 3 (SPL-RS-01-03): as Rev 2, but the heartbeat LED moved to
+              GPIO45 (GPIO2 is now I2C SDA — a Rev 2 build on Rev 3 hardware
+              toggles the I2C bus as its heartbeat), I2C added on GPIO2/42,
+              the analog pot on GPIO1, and the silkscreen button numbering
+              shifted.
+            Rev A (SPL-RS-01-A): the production board. Same ESP32 pinout as
+              Rev 3; the board-level changes are listed in hal_reva.h.
+
+        config BOARD_REVISION_REV1
+            bool "Rev 1"
+        config BOARD_REVISION_REV2
+            bool "Rev 2"
+        config BOARD_REVISION_REV3
+            bool "Rev 3"
+        config BOARD_REVISION_REVA
+            bool "Rev A (production)"
+    endchoice
+
+endmenu
