@@ -20,7 +20,8 @@ signal path and the other runs everything else.
   settings pick it up automatically
   ([docs/ADDING_EFFECTS.md](docs/ADDING_EFFECTS.md)). The firmware ships with
   bypass and a multi-tap delay and reverb (`channel`). The course modules
-  used in SigPro Labs courses plug in through the same interface.
+  used in SigPro Labs courses plug in through the same interface, as a
+  separate component in `components/rs_course_fx/` that Git ignores.
 - Recording and playback. Streaming WAV capture (before or after the DSP) to
   an SD card or a flash partition, and playback mixed into the output, built
   on PSRAM rings that keep all storage I/O off the audio core.
@@ -83,9 +84,11 @@ under their own license.
 RadioSonic and SigPro Labs are trademarks of SigPro Labs, LLC. The license
 grants no rights to use either trademark. See `TRADEMARKS.md`.
 
-The board netlist in `docs/hardware/` is hardware design data, licensed under
-the CERN-OHL-P v2 (`LICENSES/CERN-OHL-P-2.0.txt`), as its `.license` file
-states.
+The RadioSonic logo that appears in photographs in this repository is not
+licensed under the MIT License. See `TRADEMARKS.md`.
+
+The files in `docs/hardware/` are hardware design data, licensed under the
+CERN-OHL-P v2 (`LICENSES/CERN-OHL-P-2.0.txt`), as each file states.
 
 Third-party software the firmware builds on, and its licenses, is listed in
 [THIRD_PARTY.md](THIRD_PARTY.md).

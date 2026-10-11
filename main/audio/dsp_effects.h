@@ -116,11 +116,15 @@ void dsp_set(int idx);             // bounds-checked select
 // The dsp_effect_t (and everything it points to) must have static storage
 // duration — the registry keeps the pointer.
 //
+// Course modules (provided separately to course participants) install as a
+// second component, components/rs_course_fx/, and register the same way from
+// rs_course_effects_init(), which runs just before rs_user_effects_init().
+//
 // dsp_effects_init() registers the core's channel effect into one of these
-// slots before it calls rs_user_effects_init(), which leaves 8 for the
-// sandbox.
+// slots first, which leaves 8 for course modules and the sandbox together.
 #define DSP_USER_EFFECT_SLOTS 9
 bool dsp_effects_register(const dsp_effect_t *fx);   // false = table full/invalid
+void rs_course_effects_init(void);                   // weak no-op; overridden by components/rs_course_fx/
 void rs_user_effects_init(void);                     // weak no-op; overridden by the effects component
 
 // Position of the current effect within its group, and the group size (used

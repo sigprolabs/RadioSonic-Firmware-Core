@@ -172,6 +172,14 @@ effect with a text config also gets its own card on the web page (the page
 builds the buttons and the cards from `/api/modes` at load). None of this
 needs a change in `main/`.
 
+Course modules, the effects used in SigPro Labs courses, install the same
+way as a separate component in `components/rs_course_fx/`. They register
+through a second weak hook, `rs_course_effects_init()`, which runs just
+before `rs_user_effects_init()`, so they never touch the sandbox and their
+effects list before yours. `.gitignore` excludes that directory: course
+modules are licensed to course participants only, so they must never be
+committed to a repository you share or publish.
+
 ---
 
 ## Worked example: the channel effect

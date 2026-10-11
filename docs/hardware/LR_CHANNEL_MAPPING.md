@@ -1,4 +1,4 @@
-<!-- SPDX-License-Identifier: MIT -->
+<!-- SPDX-License-Identifier: CERN-OHL-P-2.0 -->
 <!-- Copyright (c) 2026 SigPro Labs, LLC -->
 
 # Left/right channel mapping: what is swapped, why, and what compensates

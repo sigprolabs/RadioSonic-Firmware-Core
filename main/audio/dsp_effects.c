@@ -148,8 +148,11 @@ bool dsp_effects_register(const dsp_effect_t *fx)
     return true;
 }
 
-// Weak default: with the effects component removed, the firmware still builds
-// and runs (bypass + channel only). components/rs_student_fx/ overrides this.
+// Weak defaults: with the effects components removed, the firmware still
+// builds and runs (bypass + channel only). components/rs_student_fx/ overrides
+// rs_user_effects_init(); course modules, when installed in
+// components/rs_course_fx/, override rs_course_effects_init().
+__attribute__((weak)) void rs_course_effects_init(void) { }
 __attribute__((weak)) void rs_user_effects_init(void) { }
 
 int dsp_effect_count(void) { return BUILTIN_FX_COUNT + s_user_fx_count; }
@@ -279,7 +282,9 @@ void dsp_effects_init(void)
 
     // Out-of-tree effects register here — before settings_store_init applies
     // a saved default, so a persisted effect resolves by name at boot. Their
-    // init code may allocate per-pair state (g_geom is final by now).
+    // init code may allocate per-pair state (g_geom is final by now). Course
+    // modules go first so the sandbox's effects always list after them.
+    rs_course_effects_init();
     rs_user_effects_init();
 
     dsp_check_led_clashes();
