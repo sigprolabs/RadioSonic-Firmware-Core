@@ -19,10 +19,21 @@ and Linux — only the serial-port names differ (`COMx` vs `/dev/tty*`).
 - A USB cable to the board's USB connector (it carries flashing, the console,
   and file transfer — no separate adapter needed).
 
-## Clone and configure
+## Get the source and configure
+
+Clone the repository:
 
 ```
-git clone <repo-url> RadioSonicFirmware
+git clone https://github.com/sigprolabs/RadioSonic-Firmware-Core.git RadioSonicFirmware
+```
+
+or unzip the firmware package from your course. Either way, use a folder
+whose path has no spaces, for example `C:\esp\RadioSonicFirmware`: ESP-IDF
+cannot build from a path with spaces. On Windows with a Rev A board, you can
+skip to [Windows: build and flash with one command](#windows-build-and-flash-with-one-command).
+Otherwise, in a shell with ESP-IDF activated:
+
+```
 cd RadioSonicFirmware
 idf.py set-target esp32s3
 idf.py menuconfig
@@ -35,9 +46,9 @@ of those must change it. A wrong-revision build can boot but drive the wrong
 pins (see `main/Kconfig.projbuild`); `ver` on the console prints which
 revision the firmware was built for.
 
-> **Note:** `sdkconfig` is untracked. `sdkconfig.defaults` is the source of
-> truth for project-critical settings; any menuconfig change worth keeping
-> belongs there too.
+> **Note:** the first build generates `sdkconfig` from `sdkconfig.defaults`.
+> Make lasting configuration changes in `sdkconfig.defaults`. The build stops
+> if `sdkconfig` disagrees with an option the defaults file sets.
 
 ## Build
 
@@ -67,7 +78,7 @@ that port with `idf.py -p <port> flash`.
 
 ## Windows: build and flash with one command
 
-From the repo folder, in PowerShell or Command Prompt:
+From the `RadioSonicFirmware` folder, in PowerShell or Command Prompt:
 
 ```
 .\flash.cmd
@@ -132,8 +143,8 @@ Talk near the board in `channel` mode to hear the reflections.
 
 ## Where next
 
-- [MANUAL.md](MANUAL.md): the full CLI reference (effects, recording,
-  playback, WiFi/web UI, settings, sleep).
+- [MANUAL.md](MANUAL.md), also as [MANUAL.pdf](MANUAL.pdf): the console
+  reference for recording, playback, the web UI, settings and sleep.
 - [ADDING_EFFECTS.md](ADDING_EFFECTS.md): write your own effect as one source
   file in `components/rs_student_fx/` plus four registration edits, with the
   `channel` effect as the worked example.

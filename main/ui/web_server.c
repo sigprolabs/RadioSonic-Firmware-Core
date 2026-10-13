@@ -20,6 +20,7 @@
 #include "dsp_effects.h"
 #include "audio_codec.h"
 #include "audio_store.h"
+#include "product_identity.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -126,11 +127,35 @@ static esp_err_t h_favicon(httpd_req_t *req)
     return httpd_resp_send(req, NULL, 0);
 }
 
+// The page names the product through placeholders, filled in from
+// product_identity.h as the page streams out (chunked, no copy of the page).
+static const struct { const char *token; const char *value; } k_page_vars[] = {
+    { "@@PRODUCT_NAME@@", PRODUCT_NAME },
+    { "@@AP_SSID@@",      PRODUCT_AP_SSID },
+};
+#define PAGE_VAR_COUNT ((int)(sizeof(k_page_vars) / sizeof(k_page_vars[0])))
+
 static esp_err_t h_root(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/html");
     httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
-    return httpd_resp_send(req, _binary_web_page_html_start, HTTPD_RESP_USE_STRLEN);
+    const char *p = _binary_web_page_html_start;
+    for (;;) {
+        const char *hit = NULL;         // earliest placeholder still ahead
+        int var = -1;
+        for (int i = 0; i < PAGE_VAR_COUNT; i++) {
+            const char *h = strstr(p, k_page_vars[i].token);
+            if (h && (!hit || h < hit)) { hit = h; var = i; }
+        }
+        size_t len = hit ? (size_t)(hit - p) : strlen(p);
+        if (len > 0 && httpd_resp_send_chunk(req, p, len) != ESP_OK) return ESP_FAIL;
+        if (!hit) break;
+        if (httpd_resp_send_chunk(req, k_page_vars[var].value, HTTPD_RESP_USE_STRLEN) != ESP_OK) {
+            return ESP_FAIL;
+        }
+        p = hit + strlen(k_page_vars[var].token);
+    }
+    return httpd_resp_send_chunk(req, NULL, 0);
 }
 
 static esp_err_t h_status(httpd_req_t *req)

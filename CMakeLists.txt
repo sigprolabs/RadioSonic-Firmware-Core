@@ -14,7 +14,12 @@ execute_process(
     ERROR_QUIET
 )
 if(NOT GIT_VERSION OR GIT_VERSION STREQUAL "")
-    set(GIT_VERSION "dev")
+    # A release package without git history carries its version in VERSION.
+    if(EXISTS "${CMAKE_SOURCE_DIR}/VERSION")
+        file(STRINGS "${CMAKE_SOURCE_DIR}/VERSION" GIT_VERSION LIMIT_COUNT 1)
+    else()
+        set(GIT_VERSION "dev")
+    endif()
 endif()
 add_compile_definitions(APP_GIT_VERSION="${GIT_VERSION}")
 

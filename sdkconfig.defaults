@@ -136,16 +136,6 @@ CONFIG_ESP_PHY_MAX_WIFI_TX_POWER=13
 #     measured on a clean link. See the 2026-10-05 entry in the internal RAM
 #     measurement log (docs/ARCHITECTURE.md).
 # CONFIG_ESP_WIFI_RX_IRAM_OPT is not set
-# USB descriptor branding (2026-07-06 design review): the board previously
-# enumerated as "Espressif Device" from "Espressif Systems" with serial
-# "123456". Ship-facing polish: identify as SigPro Labs RadioSonic.
-# NOTE: takes effect on the next full build (idf.py fullclean or delete
-# build/ after changing defaults; sdkconfig must be regenerated).
-# Per-unit unique serial (from chip MAC) is a code change, tracked in the
-# design-review report.
-# These three strings belong to the product identity listed in
-# main/product_identity.h: a fork given to others changes them too
-# (TRADEMARKS.md).
-CONFIG_TINYUSB_DESC_MANUFACTURER_STRING="SigPro Labs"
-CONFIG_TINYUSB_DESC_PRODUCT_STRING="RadioSonic"
-CONFIG_TINYUSB_DESC_CDC_STRING="RadioSonic Console"
+# USB descriptor strings (manufacturer, product, CDC interface) are set in
+# code from main/product_identity.h (cli_console.c), so the
+# CONFIG_TINYUSB_DESC_*_STRING options are unused.

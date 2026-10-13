@@ -1149,10 +1149,27 @@ static void cdc0_rx_cb(int itf, cdcacm_event_t *event)
 // from USB-Serial-JTAG to USB-OTG. Single CDC: fast file transfer reuses CDC0 in a
 // raw-binary mode (see serial_xfer.c) rather than a 2nd CDC — a 2-CDC composite
 // destabilized CDC0 on this host, and the throughput comes from TinyUSB either way.
+// USB string descriptors, in the order esp_tinyusb's default device and
+// configuration descriptors index them: 0 language (US English),
+// 1 manufacturer, 2 product, 3 serial number, 4 CDC interface. The names come
+// from product_identity.h. The serial stays the esp_tinyusb default "123456":
+// Windows keys the COM port number on it, so changing it would move every
+// board to a new port.
+static const char s_usb_langid[] = { 0x09, 0x04 };
+static const char *s_usb_strings[] = {
+    s_usb_langid,
+    PRODUCT_MANUFACTURER,
+    PRODUCT_NAME,
+    "123456",
+    PRODUCT_USB_CDC_NAME,
+};
+
 static void cdc0_usb_install(void)
 {
     s_cdc0_rx_sem = xSemaphoreCreateBinary();
     tinyusb_config_t tusb_cfg = TINYUSB_DEFAULT_CONFIG();
+    tusb_cfg.descriptor.string       = s_usb_strings;
+    tusb_cfg.descriptor.string_count = sizeof(s_usb_strings) / sizeof(s_usb_strings[0]);
     // The TinyUSB device task defaults to core 1 / priority 5 — but core 1 runs the
     // real-time audio pipeline at priority 9-12, which starves it under load and
     // freezes the CDC (USB stays enumerated, TX stops). Move it to core 0 and give
