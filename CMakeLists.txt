@@ -23,6 +23,18 @@ if(NOT GIT_VERSION OR GIT_VERSION STREQUAL "")
 endif()
 add_compile_definitions(APP_GIT_VERSION="${GIT_VERSION}")
 
+# Components kept outside this tree (a folder or repository of their own):
+# RS_EXTRA_COMPONENT_DIRS lists the folders that hold them, separated by
+# semicolons. RS_DEPENDENCIES_LOCK moves the component manager's lock file out
+# of this tree too, so a build with them leaves this checkout unchanged.
+# docs/ADDING_EFFECTS.md, "Components outside the tree".
+if(DEFINED ENV{RS_EXTRA_COMPONENT_DIRS})
+    list(APPEND EXTRA_COMPONENT_DIRS $ENV{RS_EXTRA_COMPONENT_DIRS})
+endif()
+if(DEFINED ENV{RS_DEPENDENCIES_LOCK})
+    idf_build_set_property(DEPENDENCIES_LOCK "$ENV{RS_DEPENDENCIES_LOCK}")
+endif()
+
 # "Trim" the build. Include the minimal set of components, main, and anything it depends on.
 project(RadioSonicFirmware)
 

@@ -183,6 +183,22 @@ effects list before yours. `.gitignore` excludes that directory: course
 modules are licensed to course participants only, so they must never be
 committed to a repository you share or publish.
 
+### Components outside the tree
+
+A component can also live outside this tree, in a folder or repository of
+its own. Before you build, list the folders that hold such components in the
+`RS_EXTRA_COMPONENT_DIRS` environment variable, separated by semicolons; the
+top-level `CMakeLists.txt` adds them to ESP-IDF's `EXTRA_COMPONENT_DIRS`. If
+one of them pulls in managed dependencies through an `idf_component.yml`, also
+set `RS_DEPENDENCIES_LOCK` to a lock-file path outside this tree, so that a
+build with it leaves this checkout's `dependencies.lock` unchanged.
+
+```powershell
+$env:RS_EXTRA_COMPONENT_DIRS = "C:\work\my-effects\components"
+$env:RS_DEPENDENCIES_LOCK    = "C:\work\my-effects\dependencies.lock"
+.lash.ps1
+```
+
 ---
 
 ## Worked example: the channel effect
