@@ -328,6 +328,25 @@ if ($ResetConfig) {
     }
 }
 
+# Reconfigure when what the last configure baked in has changed: the version
+# (a new commit or tag) or the out-of-tree component settings. ninja only
+# watches files, so neither would otherwise reach the build. The record is
+# written by CMakeLists.txt.
+$record = "$PSScriptRoot\build\rs_configured.txt"
+if (Test-Path $record) {
+    $version = (git -C $PSScriptRoot describe --tags --always --dirty 2>$null)
+    if (-not $version) {
+        $versionFile = "$PSScriptRoot\VERSION"
+        $version = if (Test-Path $versionFile) { (Get-Content $versionFile -TotalCount 1).Trim() } else { "dev" }
+    }
+    $want = "$version|$env:RS_EXTRA_COMPONENT_DIRS|$env:RS_DEPENDENCIES_LOCK"
+    if ((Get-Content $record -Raw) -ne $want) {
+        Write-Host "Version or out-of-tree components changed since the last configure; reconfiguring..." -ForegroundColor Cyan
+        Invoke-IdfPy reconfigure
+        if ($LASTEXITCODE -ne 0) { throw "idf.py reconfigure failed" }
+    }
+}
+
 Write-Host "Building..." -ForegroundColor Cyan
 Invoke-IdfPy build
 if ($LASTEXITCODE -ne 0) {

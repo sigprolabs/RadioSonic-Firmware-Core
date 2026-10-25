@@ -35,6 +35,14 @@ if(DEFINED ENV{RS_DEPENDENCIES_LOCK})
     idf_build_set_property(DEPENDENCIES_LOCK "$ENV{RS_DEPENDENCIES_LOCK}")
 endif()
 
+# What this configure baked in: the version string and the out-of-tree
+# component settings. None of them is a file CMake watches, so flash.ps1
+# compares this record with the current values before it builds and
+# reconfigures when they differ (a new commit or tag, or a switch between a
+# build with and without out-of-tree components).
+file(WRITE "${CMAKE_BINARY_DIR}/rs_configured.txt"
+     "${GIT_VERSION}|$ENV{RS_EXTRA_COMPONENT_DIRS}|$ENV{RS_DEPENDENCIES_LOCK}")
+
 # "Trim" the build. Include the minimal set of components, main, and anything it depends on.
 project(RadioSonicFirmware)
 

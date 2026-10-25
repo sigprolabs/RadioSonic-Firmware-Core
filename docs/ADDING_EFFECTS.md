@@ -196,8 +196,14 @@ build with it leaves this checkout's `dependencies.lock` unchanged.
 ```powershell
 $env:RS_EXTRA_COMPONENT_DIRS = "C:\work\my-effects\components"
 $env:RS_DEPENDENCIES_LOCK    = "C:\work\my-effects\dependencies.lock"
-.lash.ps1
+.\flash.ps1
 ```
+
+These variables are read when the build is configured, and changing one
+changes no file the build watches. `flash.ps1` records what the last
+configure used and reconfigures when the variables or the version differ.
+With `idf.py` alone, run `idf.py reconfigure` after you set, change or clear
+them.
 
 ---
 
