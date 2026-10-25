@@ -596,10 +596,7 @@ void app_main(void) {
     register_settings_cmd();
     register_pot_cmd();
 
-    // NOTE: the old GPIO0 hold-to-record binding is retired — SW2 (GPIO0) is
-    // now the front-panel shift key (issue #8). Recording remains available
-    // via the `rec` CLI command, the web UI, and the HTTP API.
-
+    
     // 2. I2S Configuration.
     // DMA sizing: dma_frame_num is scaled so bytes-per-descriptor stay at the
     // std baseline (240 frames × 8 B = 1920 B) in every mode — TDM must not
@@ -681,7 +678,7 @@ void app_main(void) {
         tdm_cfg.slot_cfg.slot_mask = rx_slot_mask;
         ESP_ERROR_CHECK(i2s_channel_init_tdm_mode(s_i2s_rx, &tdm_cfg));
     }
-    // Overrun visibility (issue #12) — must register before channel enable.
+    // Overrun visibility 
     const i2s_event_callbacks_t rx_cbs = { .on_recv_q_ovf = on_rx_queue_overflow };
     ESP_ERROR_CHECK(i2s_channel_register_event_callback(s_i2s_rx, &rx_cbs, NULL));
     i2s_channel_enable(s_i2s_tx);

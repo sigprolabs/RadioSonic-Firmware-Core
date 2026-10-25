@@ -23,7 +23,7 @@ out wrong are kept at the end, labelled as superseded.
      headphone and line out right for every source.
   2. **Line input:** a left/right swap of the line-in samples in `rx_fill`
      (`LINE_IN_LR_SWAPPED` in `hal_rev3.h` / `hal_reva.h`), added 2026-10-01 for issue #20.
-     It is committed but not yet run on a board.
+     Verified on Rev A SN 0234 on 2026-10-03 (see Evidence).
 - **What each one fixes:**
   - Without #1, the mics come out reversed (that was issue #1).
   - With #1 and without #2, line in comes out reversed (that is issue #20).
@@ -65,6 +65,13 @@ left and right backwards, and any effect that compares the two microphones would
   says so.
 - **2026-10-01, issue #20** (Dan, SN0192, 0.9.1-103): in `input diff`, headphone and line out
   are left/right backwards; in `input mic` they are correct.
+- **2026-10-03, fix verified** (Rev A SN 0234, 0.9.1-107-ge4282e5, `input diff`, USB
+  dongle into LINE IN, and the board output back into the dongle's mic input):
+  - The board tester's line test passed 3 of 3 runs: capture mapping straight, output
+    mapping straight. Balance was −0.09 dB, crosstalk −88 dB, output balance +0.5 dB.
+  - One-sided tones: PC-left alone reads −8.0 dBFS on channel 0 and −97.3 on channel 1.
+    PC-right alone reads −7.9 on channel 1 and −97.2 on channel 0.
+  - Afterwards: `i2s_ovf` 0, `dropped` 0, guard 0 recoveries, input DC −0.0045 FS.
 - **Capture side:** live mic captures land left mic → channel 0. The ESP32-S3 I2S receive is
   textbook (the "slot 1 = left" note from issue #1 is wrong).
 
@@ -101,7 +108,7 @@ correct. The line-in path was flagged at each look and deferred each time.
 |---|---|---|
 | DAC cross-map, std I2S | `audio_codec.c`: `CODEC_R63_DAC_ON` = 0xE8 | Its comment still says "TX-quirk comp". Under the footprint explanation it compensates the output jacks. |
 | DAC mapping in TDM | `audio_codec.c`: `s_r63_straight = tdm` | TDM was set **straight** on the TX-quirk theory. If the footprint is the cause, TDM outputs are reversed at the jacks. **Never measured.** |
-| Line-in swap | `rx_fill_task` → `line_in_swap_lr()` in `radiosonic_main.c`; flag `LINE_IN_LR_SWAPPED` | New 2026-10-01. Runs in line-in mode only, before the input stats, recorder and DSP. Committed; not yet run on a board. |
+| Line-in swap | `rx_fill_task` → `line_in_swap_lr()` in `radiosonic_main.c`; flag `LINE_IN_LR_SWAPPED` | New 2026-10-01. Runs in line-in mode only, before the input stats, recorder and DSP. Verified on Rev A 2026-10-03. |
 | Board tester | `tools/board_test/rs_board_test.py`: `line_in_swapped` | Expects **straight** from 2026-10-01. It ignores the `true` saved in older `rs_board_test_config.json` files, because the mapping belongs to the firmware it flashes. |
 
 ## Settling it, and removing both compensations
