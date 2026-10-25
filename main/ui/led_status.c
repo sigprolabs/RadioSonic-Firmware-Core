@@ -5,7 +5,8 @@
 // strip, so this module runs unconditionally and no-ops harmlessly on Rev 1.
 // Lives in ui/ (not the board layer) because it reads app state: g_state and
 // the DSP effect registry. It knows NO individual effect — analyzer effects
-// reach the strip only through the framework meter (dsp_meter_publish).
+// reach the strip only through the framework meter (dsp_meter_publish) or the
+// per-effect indicator hook (dsp_effect_t.leds), both defined in dsp_effects.h.
 #include "led_status.h"
 #include "common.h"
 #include "dsp_effects.h"
@@ -27,7 +28,9 @@
 //                    1st = green, 2nd and later = orange,
 //                    single-effect group / bypass = dark
 // While the current effect publishes on the framework meter the whole strip
-// becomes a live needle instead (led_render_meter below).
+// becomes a live needle instead (led_render_meter below). An effect with an
+// indicator hook paints LEDs 2-4 itself while it is current
+// (led_render_indicators below); LED 1 keeps the input color.
 // Moderate brightness so the indicators are readable, not blinding.
 // ----------------------------------------------------------
 #define LED_LVL   90                 // base on-level (0-255)
@@ -100,6 +103,52 @@ static bool led_render_meter(void)
     return true;
 }
 
+// LED 1 — Input source. Shared by the status view and the indicator view.
+static void led_paint_input(void)
+{
+    if (g_state.input_mode == INPUT_MIC) rgb_leds_set(0, LED_LVL, LED_LVL, 0);   // yellow
+    else                                 rgb_leds_set(0, 0, LED_LVL, LED_LVL);   // cyan (line in)
+}
+
+// ---- Indicator LEDs ---------------------------------------------------------
+// GENERIC: an effect that sets dsp_effect_t.leds paints LEDs 2-4 itself while
+// it is current (for example one lamp per detected signal). The hook fills
+// three full-scale colors; this module scales them to the strip's brightness
+// and paints them, with LED 1 still showing the input source. The strip is
+// refreshed only when the colors or the input/effect signature change, so a
+// hook that reports a steady state costs nothing per poll.
+// Returns false when the current effect has no hook (caller shows the status view).
+static bool led_render_indicators(const dsp_effect_t *fx)
+{
+    static uint32_t last_rgb[3] = { ~0u, ~0u, ~0u };
+    static int      last_sig    = -1;
+
+    if (!fx || !fx->leds) { last_sig = -1; return false; }
+
+    uint32_t rgb[3] = { 0, 0, 0 };
+    fx->leds(rgb);
+
+    int sig = (g_state.dsp_effect << 4) | (int)g_state.input_mode;
+    if (s_led_status_sig == -2 && sig == last_sig && rgb[0] == last_rgb[0] &&
+        rgb[1] == last_rgb[1] && rgb[2] == last_rgb[2]) {
+        return true;                               // nothing changed
+    }
+    last_sig = sig;
+    for (int i = 0; i < 3; i++) last_rgb[i] = rgb[i];
+
+    // -2 marks the strip as painted by us. The meter and invalidate set -1,
+    // which forces this repaint; the status view repaints after us too.
+    s_led_status_sig = -2;
+
+    led_paint_input();
+    for (int i = 0; i < 3; i++) {
+        const uint32_t c = rgb[i];
+        rgb_leds_set(i + 1, LED_SCALE(c >> 16), LED_SCALE(c >> 8), LED_SCALE(c));
+    }
+    rgb_leds_refresh();
+    return true;
+}
+
 void led_status_render(void)
 {
     const dsp_effect_t *fx = dsp_current();
@@ -107,19 +156,19 @@ void led_status_render(void)
     // A publishing analyzer takes the strip: live needle instead of the
     // static status view, repainted every led_task poll (the signature cache
     // below does not apply).
-    if (led_render_meter()) return;
+    if (!(fx && fx->leds) && led_render_meter()) return;
+
+    // An effect with indicator LEDs paints LEDs 2-4 itself.
+    if (led_render_indicators(fx)) return;
 
     // Only repaint when the relevant state changed (cheap to poll).
     int sig = (g_state.dsp_effect << 4) | (int)g_state.input_mode;
     if (sig == s_led_status_sig) return;
     s_led_status_sig = sig;
 
-    const input_mode_t in = g_state.input_mode;
     const bool bypass = dsp_is_bypass(fx);
 
-    // LED 1 — Input source
-    if (in == INPUT_MIC) rgb_leds_set(0, LED_LVL, LED_LVL, 0);   // yellow
-    else                 rgb_leds_set(0, 0, LED_LVL, LED_LVL);   // cyan (line in)
+    led_paint_input();
 
     // LED 2 — Bypass / pass-thru
     if (bypass) rgb_leds_set(1, LED_LVL, LED_LVL, LED_LVL);      // white

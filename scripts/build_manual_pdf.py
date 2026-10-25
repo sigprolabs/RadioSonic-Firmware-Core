@@ -72,6 +72,8 @@ h4 {{ font-size: 10pt; margin: 1em 0 .3em; break-after: avoid; }}
 code {{ font: 8.8pt Consolas, "Courier New", monospace; background: #f2f2f2; padding: 0 2px; }}
 pre {{ background: #f5f5f5; border: 1px solid #ddd; padding: 6px 8px; break-inside: avoid; white-space: pre-wrap; }}
 pre code {{ background: none; padding: 0; }}
+/* A one-line caption (a file and line range above a code block) stays with its block. */
+p:has(+ pre) {{ break-after: avoid; }}
 table {{ border-collapse: collapse; margin: .6em 0; width: 100%; font-size: 9pt; }}
 th, td {{ border: 1px solid #ccc; padding: 3px 6px; vertical-align: top; text-align: left; }}
 th {{ background: #eee; }}

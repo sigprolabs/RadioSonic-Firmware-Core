@@ -12,8 +12,8 @@
 // (audio_dsp.c) owns int<->float conversion, the L/R unpack/repack, the
 // sample loop, and output clipping; an effect implements the math for one
 // stereo sample plus its own state — and, through the OPTIONAL hooks below,
-// its own console verbs, web/settings serialization, LED meter, and pot
-// binding. Every control surface in the firmware (CLI, web API + page,
+// its own console verbs, web/settings serialization, LED meter or indicator
+// LEDs, and pot binding. Every control surface in the firmware (CLI, web API + page,
 // `status`, LEDs, front-panel buttons, the analog pot, settings persistence)
 // reaches effects ONLY through this registry: an out-of-tree effect is a
 // first-class citizen by construction, because in-tree effects have no other
@@ -76,6 +76,15 @@ typedef struct {
     // fragment with EMBED_TXTFILES; docs/ADDING_EFFECTS.md has the contract
     // and main/audio/channel_panel.html is the worked example.
     const char *web_panel;
+    // Indicator LEDs: while this effect is current, the LED task calls the
+    // hook on every poll (about 10 Hz) and paints rgb[0..2] (0xRRGGBB at full
+    // scale, 0 = off) onto LEDs 2, 3 and 4 in place of the Bypass / Mode /
+    // Sub-mode view. LED 1 keeps showing the input source. The strip is
+    // repainted only when the three values change. The hook runs in the LED
+    // task on core 0: read values your effect publishes (volatile scalars),
+    // never compute or block. NULL = the normal status view. An effect that
+    // publishes on the meter should not set this; the meter is ignored.
+    void (*leds)(uint32_t rgb[3]);
     // Optional legacy name that dsp_find also accepts (CLI `mode`, /api/mode,
     // /api/fx/<name>, saved settings), so a renamed effect keeps old scripts
     // working. A real name always wins over an alias.
@@ -121,8 +130,8 @@ void dsp_set(int idx);             // bounds-checked select
 // rs_course_effects_init(), which runs just before rs_user_effects_init().
 //
 // dsp_effects_init() registers the core's channel effect into one of these
-// slots first, which leaves 8 for course modules and the sandbox together.
-#define DSP_USER_EFFECT_SLOTS 9
+// slots first, which leaves 11 for course modules and the sandbox together.
+#define DSP_USER_EFFECT_SLOTS 12
 bool dsp_effects_register(const dsp_effect_t *fx);   // false = table full/invalid
 void rs_course_effects_init(void);                   // weak no-op; overridden by components/rs_course_fx/
 void rs_user_effects_init(void);                     // weak no-op; overridden by the effects component

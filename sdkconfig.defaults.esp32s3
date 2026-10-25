@@ -42,5 +42,11 @@ CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
 # used 300 ms. Pinned so a regenerated sdkconfig keeps that value.
 CONFIG_ESP_INT_WDT_TIMEOUT_MS=300
 
+# 6. CPU clock. Only the IDF default before 2026-10-21; every timing budget
+# in docs/ARCHITECTURE.md assumes 160 MHz, so a regenerated sdkconfig must not
+# change it. Choice selector only: the derived CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ
+# follows.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_160=y
+
 # (FATFS + LwIP settings are chip-agnostic project policy — they live in
 #  sdkconfig.defaults, one owner per option.)

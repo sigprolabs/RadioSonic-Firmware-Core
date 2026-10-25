@@ -15,7 +15,7 @@
 // limitation, not a reason to special-case an effect.
 //
 //   HOW TO ADD AN EFFECT: docs/ADDING_EFFECTS.md (full walkthrough).
-//   channel_fx.c is the in-tree worked example of every hook except alias:
+//   channel_fx.c is the in-tree worked example of every hook except alias and leds:
 //   process/reset/print/snapshot/cmd/save_text/load_text/pot/web_panel.
 //
 // process() receives the input sample already scaled to float [-1,+1]; return

@@ -74,6 +74,7 @@ Everything else is optional:
 | `save_text` / `load_text` | `settings save` persistence, the web API (`GET/POST /api/fx/<name>`) and a generic web card | [`fx_channel_save_text` / `fx_channel_load_text`](#save_text-and-load_text) |
 | `pot_label` + `pot_set` | the analog knob via `pot fx` | [`"channel delay"` + `fx_channel_pot_set`](#pot-binding) |
 | `web_panel` | your own web card in place of the generic one ([Web panel](#web-panel)) | [`main/audio/channel_panel.html`](#channels-panel) |
+| `leds` | LEDs 2, 3 and 4 painted by your effect while it is current ([Indicator LEDs](#indicator-leds)) | not used by channel |
 | `alias` | an old name that `mode`, `/api/mode`, `/api/fx/<name>` and saved settings still accept after a rename | not used by channel |
 | `dsp_meter_publish()` (a function to call) | the LED strip as a live needle + the `meter` in `/api/status` | not used by channel (see [Analyzers and the LED needle](#analyzers-and-the-led-needle)) |
 
@@ -134,10 +135,12 @@ Four edits register it:
 `dsp_pair_count()` returns the real codec-pair count there, and before a
 saved default effect is applied, so a saved effect resolves by name at boot.
 `dsp_effects_register()` logs an error and returns false when the name is
-already registered or all `DSP_USER_EFFECT_SLOTS` (9) slots are taken.
-Channel takes one before `rs_user_effects_init()` runs, which leaves 8 for
-the sandbox. Every `dsp_effects_register()` call already in `student_fx.c`
-takes one of those 8, so count them before adding yours. An effect whose
+already registered or all `DSP_USER_EFFECT_SLOTS` (12) slots are taken.
+Channel takes one before `rs_user_effects_init()` runs, which leaves 11 for
+course modules and the sandbox together. Each effect an installed course
+module registers takes one of those 11, and so does every
+`dsp_effects_register()` call already in `student_fx.c`, so count them
+before adding yours. An effect whose
 registration failed is missing from the `mode` list that `help` prints.
 
 Channel, in `main/`, has the same four pieces. `main/CMakeLists.txt` lists
@@ -1048,6 +1051,84 @@ when `dsp_current_pair()` is not 0.
   resource, so before adding more than a few KB of it, compare the internal
   `Heap` figures that `status` prints with and without your change.
 
+### Effects that own a task
+
+Work too heavy for `process()`, such as a long FFT every few hundred
+milliseconds, can run in a task the effect creates. `process()` hands the task
+its samples through a ring buffer, and the task does the work on core 0.
+
+- **One task, created once.** Create it in the effect's init function at
+  boot. Pin it to core 0 with `xTaskCreatePinnedToCore(..., 0)` (core 1 runs
+  audio only) at priority 2 or lower, so the console, the web server and the
+  recorder stay ahead of it. Add a row for it to the task map in
+  `app_main` step 5 of
+  [`main/radiosonic_main.c`](../main/radiosonic_main.c).
+- **A ring with one writer and one reader.** Put the ring in PSRAM.
+  `process()` writes samples and then advances the head; the task reads them
+  and then advances the tail. Each index is a `uint32_t` written by one side
+  only, so neither side needs a lock, but the order of memory accesses
+  matters: publish an index with `__atomic_store_n(..., __ATOMIC_RELEASE)`
+  and read the other side's with `__atomic_load_n(..., __ATOMIC_ACQUIRE)`,
+  so a reader never sees a new head before the samples behind it, and a
+  writer never reuses a slot before the reader is done with it. When the ring is full,
+  `process()` drops the new samples and counts them; show that count in your
+  status output. Size the ring for a few of the task's work units, so a task
+  that falls briefly behind loses nothing.
+- **No RTOS calls in `process()`.** The rule in
+  [What the framework guarantees and expects](#what-the-framework-guarantees-and-expects)
+  still holds: no queue sends, task notifications or semaphores. The task
+  finds new samples by polling the head.
+- **Sleep between polls.** The task calls `vTaskDelay()` between polls (every
+  50 ms suits work units of a few hundred milliseconds) and between chunks of
+  a long computation. Core 0's idle task must run at least every 5 s, or the
+  task watchdog trips.
+- **Stack.** A task stack comes from internal RAM by default, and one of
+  4 KB or more is a row in the internal RAM ledger
+  ([`docs/ARCHITECTURE.md`](ARCHITECTURE.md), "Internal RAM budget"),
+  checked against the boot `heap:` lines. A task that never calls flash or
+  NVS functions can keep its stack in PSRAM instead, which costs internal RAM
+  only for the task's control block:
+
+  ```c
+  xTaskCreatePinnedToCoreWithCaps(myeffect_task, "myfx", 4096, NULL, 2,
+                                  &s_task, 0, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  ```
+
+  Flash and NVS calls, reads included, turn off the cache, and PSRAM with
+  it, so a task whose stack is in PSRAM must never make them: no `settings`
+  or NVS calls, no partition or SPI-flash calls. Math, `vTaskDelay()` and
+  `ESP_LOGI` are fine. This needs `CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM`,
+  which ESP-IDF enables by default on the ESP32-S3.
+- **Buffers.** Allocate the task's buffers in PSRAM once, at init, with
+  `heap_caps_aligned_alloc(16, bytes, MALLOC_CAP_SPIRAM)` where a SIMD kernel
+  needs 16-byte alignment. A library's own init function can allocate tables
+  in internal RAM without saying so: read what it allocates before you call
+  it, and compare the `heap:` boot lines with and without your effect. Any
+  internal allocation of 4 KB or more goes in the ledger.
+- **Shared PSRAM bandwidth.** Core 1 reads PSRAM too (delay lines, the record
+  and playback rings), so a task that streams through large PSRAM buffers can
+  slow the audio tasks. Check that the `status` Load line and the overrun
+  counters stay where they were with your effect running. Time the task's own
+  work with `esp_timer_get_time()` and report the average and maximum in your
+  status output.
+- **Leaving the effect.** `dsp_effect_t` has no select or deselect hook, and
+  `process()` runs only while the effect is current. The task can tell from
+  the ring instead: when the head has not moved for 500 ms, the effect is no
+  longer current, and the task clears its state, so selecting the effect
+  again starts fresh. Leave `reset` empty or NULL, because it runs in an
+  audio task and must not touch state the task owns.
+- **Values shared with the task.** Parameters the task reads follow
+  [Parameters and thread safety](#parameters-and-thread-safety): a single
+  32-bit value can be a plain static, and for several that change together
+  the task takes a copy under `dsp_cfg_lock()` once per work unit. Results go
+  the other way as `volatile` scalars that the task writes and the `print`,
+  `cmd`, `save_text` and `leds` hooks only read.
+- **Logging.** The task may log with `ESP_LOGI`, one line per change of
+  state, never one per work unit, because the console drops output under load
+  ([`docs/ARCHITECTURE.md`](ARCHITECTURE.md), "Resource-change checklist").
+  Keep the string `DSP:` out of the lines: host tools read it as a mode
+  change.
+
 ### Analyzers and the LED needle
 
 An analyzer passes audio through and publishes a measurement with
@@ -1057,6 +1138,41 @@ LED and +1 the rightmost; conf 0 shows the idle glow and 1 full brightness.
 While the meter is being published the strip renders it as the orange needle
 automatically, and `/api/status` carries it. Scale the value to something a
 person can read off the strip, such as a direction or a level.
+
+### Indicator LEDs
+
+An effect that reports up to three on/off results can drive LEDs 2, 3 and 4
+itself through the `leds` hook. While the effect is current, the LED task
+calls the hook on every poll, about 10 times a second, and paints `rgb[0]`,
+`rgb[1]` and `rgb[2]` onto LEDs 2, 3 and 4 in place of the Bypass, Mode and
+Sub-mode view. LED 1 keeps showing the input source. Colors are `0xRRGGBB` at
+full scale with 0 for off, and the LED code applies the board's brightness,
+as it does for `led_rgb`. The strip is repainted only when a value changes.
+When another effect becomes current, for example when Bypass is pressed, the
+normal view returns.
+
+```c
+static volatile bool s_found[3];   // written by the effect's task
+
+static void fx_myeffect_leds(uint32_t rgb[3])
+{
+    for (int i = 0; i < 3; i++) rgb[i] = s_found[i] ? 0x0000FF : 0;   // blue, or off
+}
+```
+
+- The hook runs in the LED task on core 0, at the same time as `process()`
+  and any task of your own. Read values your effect has already published,
+  as `volatile` scalars, and return. Do no computing, locking or logging
+  there.
+- Never call the strip driver (`rgb_leds_*`) from your effect or its task.
+  The LED task is its only writer, and the driver's pixel buffer and RMT
+  channel have no lock.
+- Use one hue for all three. The strip's red, green and blue dies differ in
+  brightness at the same setting, so mixed colors read unevenly.
+- Use the meter or `leds`, not both. While an effect with a `leds` hook is
+  current the meter is ignored, so a stray publish from another effect (every
+  effect's reset runs on a flush) cannot take the strip.
+- Still set `led_rgb`: `mode` lists it and the boot clash check compares it.
 
 ### Naming
 
@@ -1088,6 +1204,12 @@ real name always wins over an alias.
 - [ ] optional `web_panel`: an `.html` fragment with a unique file name next
       to the source, listed in the component's `EMBED_TXTFILES`, with ids and
       functions prefixed by the effect name
+- [ ] optional `leds`: reads only `volatile` values the effect publishes;
+      NULL in an effect that publishes on the meter
+- [ ] optional task of its own: one, created at init, pinned to core 0 at
+      priority 2 or lower, fed through a PSRAM ring with no RTOS calls in
+      `process()`, `vTaskDelay()` between polls, a row in the task map, and
+      its stack in the RAM ledger or in PSRAM
 - [ ] each hook compared with its `fx_channel_*` counterpart, and the init
       function with `channel_fx_init()`, in `main/audio/channel_fx.c`
 - [ ] registered: file in `SRCS` and the `-O2` list (component

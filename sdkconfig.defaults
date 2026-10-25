@@ -73,6 +73,12 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 #    driven, unaffected by tick rate.
 CONFIG_FREERTOS_HZ=1000
 
+# 8a. Task stacks in PSRAM. An effect-owned analysis task may put its stack in
+# PSRAM with xTaskCreatePinnedToCoreWithCaps (docs/ADDING_EFFECTS.md, "Effects
+# that own a task") so that it costs no internal RAM. This is the IDF default;
+# pinned because a build without it fails that task's creation at boot.
+CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM=y
+
 # 9. FATFS (SD recording path). Mirrored from menuconfig — the live sdkconfig is
 #    untracked, so anything project-critical must live here.
 #    - 4096-byte max sector (FF_MAX_SS) for the SD streaming write path

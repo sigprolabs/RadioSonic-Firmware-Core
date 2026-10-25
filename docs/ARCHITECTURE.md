@@ -70,6 +70,14 @@ From the task map in `app_main` step 5 (radiosonic_main.c):
 steal audio headroom. Every new task is `xTaskCreatePinnedToCore(…, 0)` and
 gets a row in the radiosonic_main.c map.
 
+A task that an effect owns
+([ADDING_EFFECTS.md](ADDING_EFFECTS.md#effects-that-own-a-task)) follows the
+same rule. Its stack may be in PSRAM, created with
+`xTaskCreatePinnedToCoreWithCaps(…, 0, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)`,
+if the task never calls flash or NVS functions: they turn off the cache, and
+PSRAM with it, while they run. A PSRAM stack costs internal RAM only for the
+task control block, so it needs no ledger row.
+
 ## Control plane
 
 CLI console, web UI/HTTP API, front-panel buttons (addressed positionally
@@ -86,7 +94,9 @@ verbs live next to its implementation.
 
 Internal SRAM is the scarce resource on this board (PSRAM is plentiful — big
 buffers go there). Task stacks, DMA buffers, and TinyUSB FIFOs **must** be
-internal, so every KB here is contended. This table is the ledger of deliberate
+internal (one exception: a task that never calls flash or NVS functions may
+keep its stack in PSRAM, see [Tasks, cores, priorities](#tasks-cores-priorities)),
+so every KB here is contended. This table is the ledger of deliberate
 internal allocations ≥ 4 KB. **Any change to one of these — or any new internal
 allocation ≥ 4 KB — updates this table and gets verified against the boot
 checkpoints below in the same commit.**
@@ -156,6 +166,8 @@ Specific lessons already paid for — check the diff against these:
 2. **Tasks**: `xTaskCreatePinnedToCore(…, 0)` only — core 1 is audio-only
    (tx 12 / rx 11 / dsp 9). An unpinned task can migrate onto core 1 and
    starve the pipeline. Add new tasks to the task map in `radiosonic_main.c`.
+   A PSRAM stack (`xTaskCreatePinnedToCoreWithCaps`, still core 0) is only for
+   a task that never calls flash or NVS functions.
 3. **sdkconfig**: it's untracked — mirror every project-critical change into
    `sdkconfig.defaults` (+ a drift guard where possible, e.g. the CDC FIFO
    `_Static_assert`).

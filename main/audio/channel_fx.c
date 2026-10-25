@@ -5,7 +5,7 @@
 // ============================================================================
 // "Channel" means a set of delay-and-weight paths per stereo side (L and R
 // are configured independently), summed from a shared 1.5 s stereo delay
-// ring in PSRAM. This effect demonstrates every optional hook except alias;
+// ring in PSRAM. This effect demonstrates every optional hook except alias and leds;
 // effects in components/rs_student_fx/ follow the same shape.
 //
 // It is wired the same way as a sandbox effect. This file exports its record,
