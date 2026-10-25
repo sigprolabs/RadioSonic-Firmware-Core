@@ -403,25 +403,12 @@ $argsFile = if ($Full) { "flash_args" } else { "flash_app_args" }
 Write-Host "Flashing $(if ($Full) { 'bootloader + partition table + app' } else { 'app' }) on $flashPort..." -ForegroundColor Cyan
 Push-Location "$PSScriptRoot\build"
 try {
-    # stdout is captured (and still shown) so a failed exit can be checked
-    # against what esptool actually wrote.
-    & $IdfPython -m esptool --chip esp32s3 -p $flashPort -b 460800 `
-        --before default_reset --after $afterFlash write_flash "@$argsFile" |
-        Tee-Object -Variable esptoolOut
-    if ($LASTEXITCODE -ne 0) {
-        # After a watchdog reset the board leaves download mode and its port
-        # disappears; esptool 4.12+ reports that as a serial error and exits
-        # non-zero even though every segment was written and verified.
-        $text = $esptoolOut -join "`n"
-        $written = ([regex]::Matches($text, "Wrote \d+ bytes")).Count
-        $verified = ([regex]::Matches($text, "Hash of data verified")).Count
-        if ($inRomDownloadMode -and $written -gt 0 -and $verified -eq $written -and
-            $text -match "Hard resetting with a watchdog") {
-            Write-Host "All $written segment(s) verified; the serial error above came from the board rebooting." -ForegroundColor Yellow
-        } else {
-            throw "esptool flash failed on $flashPort"
-        }
-    }
+    # esptool_flash.py runs esptool and treats the board dropping off USB
+    # during the post-flash watchdog reset as the success it is, instead of
+    # letting esptool report it as a serial error.
+    & $IdfPython "$PSScriptRoot\scripts\esptool_flash.py" --chip esp32s3 -p $flashPort -b 460800 `
+        --before default_reset --after $afterFlash write_flash "@$argsFile"
+    if ($LASTEXITCODE -ne 0) { throw "esptool flash failed on $flashPort" }
 } finally {
     Pop-Location
 }
