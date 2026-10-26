@@ -139,6 +139,81 @@ static inline void ch_delayed_sample(channel_pair_t *st, int offset_samples,
     *r_out = st->delay_buf[read_idx * 2 + 1];
 }
 
+// ---- knob glide (pot binding only) ----
+// The knob moves its tap a few whole samples per update, and a read point that
+// jumps by whole samples clicks. When the knob is what changed its tap, the
+// tap glides from the old delay to the new one, read between two samples, and
+// ch_pot_glide() swaps that for the whole-sample read the loops made. Every
+// other path, and any delay set by `channel` or `settings load`, still jumps
+// exactly as the loops read it. With no glide in progress this costs two
+// comparisons per side per sample.
+#define CH_GLIDE_TAU_S     0.010f            // glide time constant
+#define CH_GLIDE_MAX_RATE  0.05f             // delay change per sample: pitch bend <= 5 %
+#define CH_GLIDE_MAX_MOVE  (0.020f * FS_HZ)  // a longer move jumps, like a typed one
+
+typedef struct {
+    int   target;   // the tap's delay as the loops read it, in samples
+    float offset;   // how far the read point still is from target, in samples
+    int   primed;   // 0 until the first sample sets target
+} ch_glide_t;
+static ch_glide_t     s_ch_glide[AUDIO_MAX_PAIRS][2];   // [pair][left, right]
+static volatile float s_ch_glide_sec = -1.0f;   // last delay fx_channel_pot_set() published
+
+// The correction for one side: the tap's gliding read minus its whole-sample read.
+static inline float ch_glide_side(channel_pair_t *st, ch_glide_t *g,
+                                  const channel_path_t *p, int right)
+{
+    int target = (int)(p->delay_sec * FS_HZ);
+    if (target >= DELAY_SAMPLES) target = DELAY_SAMPLES - 1;
+    if (!g->primed) { g->target = target; g->offset = 0.0f; g->primed = 1; }
+    if (target != g->target) {
+        // A new delay this block. If the knob published it, glide from where
+        // the read point is now; otherwise jump, as the loops do.
+        float offset = g->offset + (float)(g->target - target);
+        int   knob   = (p->delay_sec == s_ch_glide_sec) &&
+                       fabsf(offset) <= CH_GLIDE_MAX_MOVE;
+        g->offset = knob ? offset : 0.0f;
+        g->target = target;
+    }
+    if (g->offset == 0.0f) return 0.0f;
+
+    // Close part of the gap every sample: a CH_GLIDE_TAU_S time constant,
+    // capped at CH_GLIDE_MAX_RATE samples of delay per sample.
+    float step = g->offset * (1.0f / (CH_GLIDE_TAU_S * FS_HZ));
+    if (step >  CH_GLIDE_MAX_RATE) step =  CH_GLIDE_MAX_RATE;
+    if (step < -CH_GLIDE_MAX_RATE) step = -CH_GLIDE_MAX_RATE;
+    g->offset -= step;
+    if (fabsf(g->offset) < 1e-3f) g->offset = 0.0f;   // close enough: done
+
+    // The read point, target + offset, falls between two whole samples:
+    // i (newer) and i + 1 (older), with f the fraction of the way to the older.
+    float whole = floorf(g->offset);
+    int   i     = target + (int)whole;
+    float f     = g->offset - whole;
+    if (i < 0) i = 0;
+    if (i > DELAY_SAMPLES - 2) i = DELAY_SAMPLES - 2;
+
+    float newer_l, newer_r, older_l, older_r, loop_l, loop_r;
+    ch_delayed_sample(st, i,      &newer_l, &newer_r);
+    ch_delayed_sample(st, i + 1,  &older_l, &older_r);
+    ch_delayed_sample(st, target, &loop_l,  &loop_r);    // what the loops read
+
+    float newer_x = right ? newer_r : newer_l;
+    float older_x = right ? older_r : older_l;
+    float loop_x  = right ? loop_r  : loop_l;
+
+    float glided = newer_x + f * (older_x - newer_x);    // linear interpolation
+    return p->weight * (glided - loop_x);
+}
+
+static inline void ch_pot_glide(channel_pair_t *st, float *aL, float *aR)
+{
+    ch_glide_t *g = s_ch_glide[dsp_current_pair()];
+    int tap = s_ch_pot_tap;
+    if (tap < s_chL.num_paths) *aL += ch_glide_side(st, &g[0], &s_chL.paths[tap], 0);
+    if (tap < s_chR.num_paths) *aR += ch_glide_side(st, &g[1], &s_chR.paths[tap], 1);
+}
+
 static void fx_channel(float xL, float xR, float *yL, float *yR)
 {
     channel_pair_t *st = &s_ch_pair[dsp_current_pair()];
@@ -168,6 +243,8 @@ static void fx_channel(float xL, float xR, float *yL, float *yR)
         ch_delayed_sample(st, ds, &tmpL, &tmpR);
         aR += s_chR.paths[i].weight * tmpR;
     }
+
+    ch_pot_glide(st, &aL, &aR);   // knob sweeps only (see "knob glide" above)
 
     if (++st->delay_head >= DELAY_SAMPLES) st->delay_head = 0;
 
@@ -367,6 +444,7 @@ static void fx_channel_pot_set(float x01)
     wR = s_ch_cfg_R.paths[s_ch_pot_tap].weight;   // each side keeps its weight
     dsp_cfg_unlock();
     if (samples == cur) return;
+    s_ch_glide_sec = ms / 1000.0f;   // marks this change as the knob's (knob glide)
     channel_set_path('L', s_ch_pot_tap, ms / 1000.0f, wL);
     channel_set_path('R', s_ch_pot_tap, ms / 1000.0f, wR);
 }

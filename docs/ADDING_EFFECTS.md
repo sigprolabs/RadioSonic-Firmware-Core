@@ -374,6 +374,8 @@ static void fx_channel(float xL, float xR, float *yL, float *yR)
         aR += s_chR.paths[i].weight * tmpR;
     }
 
+    ch_pot_glide(st, &aL, &aR);   // knob sweeps only (see "knob glide" above)
+
     if (++st->delay_head >= DELAY_SAMPLES) st->delay_head = 0;
 
     *yL = aL;
@@ -394,6 +396,9 @@ The parts to copy:
   nothing that can block. Their bounds come from the snapshot's `num_paths`.
 - The left output sums only the ring's left samples and the right output only
   its right samples.
+- `ch_pot_glide()` smooths the knob's sweeps and does nothing otherwise. It is
+  covered under [Pot binding](#pot-binding); an effect without a knob-driven
+  delay does not need it.
 
 ### reset
 
@@ -673,6 +678,7 @@ static void fx_channel_pot_set(float x01)
     wR = s_ch_cfg_R.paths[s_ch_pot_tap].weight;   // each side keeps its weight
     dsp_cfg_unlock();
     if (samples == cur) return;
+    s_ch_glide_sec = ms / 1000.0f;   // marks this change as the knob's (knob glide)
     channel_set_path('L', s_ch_pot_tap, ms / 1000.0f, wL);
     channel_set_path('R', s_ch_pot_tap, ms / 1000.0f, wR);
 }
@@ -696,6 +702,28 @@ moves one path's delay on both sides:
 - The delay engine works in whole samples, so it skips the publish when the
   new delay, in samples, equals the left side's current one.
 - It publishes through `channel_set_path()`, the writer `cmd` uses.
+
+#### Knob glide
+
+Each knob update moves the delay a few whole samples at once, and a delay
+read point that jumps by whole samples makes a click. A sweep made of those
+steps sounds like a zipper. So when the knob changes its tap, the tap glides
+smoothly to the new delay instead, reading between two samples with
+linear interpolation, like a hardware flanger. The glide code sits in its own
+block above `fx_channel()`:
+
+- `fx_channel_pot_set()` records each delay it publishes in `s_ch_glide_sec`.
+  A change to the tap that matches it came from the knob and glides. Any other
+  change, from `channel`, the web or `settings load`, jumps exactly as the
+  loops read it, and so does a knob move longer than 20 ms of delay.
+- The loops still read the tap at its whole-sample delay.
+  `ch_pot_glide()`, called after them, adds the difference between the
+  gliding read and that whole-sample read, so the loops stay as they are.
+- The glide follows the new delay with a 10 ms time constant and changes the
+  delay by at most 0.05 samples per sample, which bends the delayed copy's
+  pitch by at most 5 %. That bend is what a real flanger's sweep sounds like.
+- Once the glide reaches the target it costs two comparisons per side per
+  sample.
 
 ### init
 

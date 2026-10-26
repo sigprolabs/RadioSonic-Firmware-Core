@@ -562,9 +562,11 @@ channel pot 1 5 400
 pot fx
 ```
 
-The knob now sweeps the echo from 5 ms to 400 ms. The delay jumps to each new value
-without a crossfade, so turning the knob clicks. The knob changes only the tap's delay,
-so a tap with weight 0 sweeps silently: give it a weight first, as in the example.
+The knob now sweeps the echo from 5 ms to 400 ms. Between knob steps the delay glides,
+so the echo bends in pitch as it moves, like a tape delay, and does not click. A turn
+fast enough to move the delay more than 20 ms at once still jumps. The knob changes only
+the tap's delay, so a tap with weight 0 sweeps silently: give it a weight first, as in
+the example.
 
 At every power-up the pot target returns to `off`, the volume to 0 dB, and the
 `channel pot` setting to tap 1 over 0 to 250 ms. The delay times the knob sets are
