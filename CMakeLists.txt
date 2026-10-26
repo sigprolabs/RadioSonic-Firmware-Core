@@ -43,6 +43,12 @@ endif()
 file(WRITE "${CMAKE_BINARY_DIR}/rs_configured.txt"
      "${GIT_VERSION}|$ENV{RS_EXTRA_COMPONENT_DIRS}|$ENV{RS_DEPENDENCIES_LOCK}")
 
+# A component folder unzipped or created under components/ after the last
+# configure would otherwise be ignored: the component list is fixed when
+# CMake runs. CONFIGURE_DEPENDS re-checks this glob on every build, so
+# idf.py build (and VS Code's Build) re-runs CMake when the set changes.
+file(GLOB RS_COMPONENT_LISTS CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/components/*/CMakeLists.txt")
+
 # "Trim" the build. Include the minimal set of components, main, and anything it depends on.
 project(RadioSonicFirmware)
 
