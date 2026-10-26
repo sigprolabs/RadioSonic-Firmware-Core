@@ -334,7 +334,9 @@ if ($ResetConfig) {
 # written by CMakeLists.txt.
 $record = "$PSScriptRoot\build\rs_configured.txt"
 if (Test-Path $record) {
-    $version = (git -C $PSScriptRoot describe --tags --always --dirty 2>$null)
+    # An unzipped release has no .git (or no git at all). Windows PowerShell
+    # turns git's stderr into a terminating error under Stop, so catch it.
+    $version = try { git -C $PSScriptRoot describe --tags --always --dirty 2>$null } catch { $null }
     if (-not $version) {
         $versionFile = "$PSScriptRoot\VERSION"
         $version = if (Test-Path $versionFile) { (Get-Content $versionFile -TotalCount 1).Trim() } else { "dev" }
