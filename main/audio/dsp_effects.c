@@ -8,8 +8,8 @@
 // registry itself defines (index 0, dsp_is_bypass). Every other effect lives
 // in its own file and registers through dsp_effects_register(): the channel
 // multi-tap delay in channel_fx.c, registered by dsp_effects_init() below,
-// and any out-of-tree effects in components/rs_student_fx/, registered by
-// rs_user_effects_init().
+// the effects of module components (DSP_EFFECTS_MODULE), and the effects in
+// components/rs_student_fx/, registered by rs_user_effects_init().
 // No control surface (CLI, web, settings, LEDs, pot) has a private path to
 // any effect; if a hook here can't express something, that is a framework
 // limitation, not a reason to special-case an effect.
@@ -148,12 +148,51 @@ bool dsp_effects_register(const dsp_effect_t *fx)
     return true;
 }
 
-// Weak defaults: with the effects components removed, the firmware still
-// builds and runs (bypass + channel only). components/rs_student_fx/ overrides
-// rs_user_effects_init(); course modules, when installed in
-// components/rs_course_fx/, override rs_course_effects_init().
-__attribute__((weak)) void rs_course_effects_init(void) { }
+// Weak default: with the effects component removed, the firmware still
+// builds and runs (bypass + channel only). components/rs_student_fx/
+// overrides rs_user_effects_init().
 __attribute__((weak)) void rs_user_effects_init(void) { }
+
+// Module components recorded by DSP_EFFECTS_MODULE. The constructors run
+// before app_main, with .bss already zeroed, so this only stores pointers;
+// dsp_effects_init() runs the init functions.
+typedef struct {
+    const char *name;
+    void      (*init)(void);
+} dsp_module_t;
+static dsp_module_t s_modules[DSP_EFFECTS_MODULE_SLOTS];
+static int s_module_count   = 0;
+static int s_module_dropped = 0;
+
+void dsp_effects_add_module(const char *name, void (*init)(void))
+{
+    if (!name || !init) return;
+    if (s_module_count >= DSP_EFFECTS_MODULE_SLOTS) { s_module_dropped++; return; }
+    s_modules[s_module_count].name = name;
+    s_modules[s_module_count].init = init;
+    s_module_count++;
+}
+
+// Constructors run in link order, which nothing promises, so sort by module
+// name: `mode`, the web buttons and the front-panel cycle keep one order.
+static void dsp_effects_run_modules(void)
+{
+    for (int i = 1; i < s_module_count; i++) {
+        for (int j = i; j > 0 && strcmp(s_modules[j - 1].name, s_modules[j].name) > 0; j--) {
+            dsp_module_t t = s_modules[j];
+            s_modules[j] = s_modules[j - 1];
+            s_modules[j - 1] = t;
+        }
+    }
+    for (int i = 0; i < s_module_count; i++) {
+        ESP_LOGI(TAG, "module '%s'", s_modules[i].name);
+        s_modules[i].init();
+    }
+    if (s_module_dropped) {
+        ESP_LOGE(TAG, "%d module(s) not run: more than %d (DSP_EFFECTS_MODULE_SLOTS)",
+                 s_module_dropped, DSP_EFFECTS_MODULE_SLOTS);
+    }
+}
 
 int dsp_effect_count(void) { return BUILTIN_FX_COUNT + s_user_fx_count; }
 
@@ -282,9 +321,9 @@ void dsp_effects_init(void)
 
     // Out-of-tree effects register here — before settings_store_init applies
     // a saved default, so a persisted effect resolves by name at boot. Their
-    // init code may allocate per-pair state (g_geom is final by now). Course
-    // modules go first so the sandbox's effects always list after them.
-    rs_course_effects_init();
+    // init code may allocate per-pair state (g_geom is final by now). Module
+    // components go first so the sandbox's effects always list after them.
+    dsp_effects_run_modules();
     rs_user_effects_init();
 
     dsp_check_led_clashes();

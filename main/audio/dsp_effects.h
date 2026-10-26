@@ -92,7 +92,8 @@ typedef struct {
 } dsp_effect_t;
 
 // Unified registry view: bypass at index 0, then registered effects in call
-// order (channel from dsp_effects_init(), then rs_user_effects_init()'s).
+// order (channel from dsp_effects_init(), then the modules' by module name,
+// then rs_user_effects_init()'s).
 // ALL iteration goes through these two, so a registered effect needs no
 // special case anywhere.
 int                 dsp_effect_count(void);
@@ -125,23 +126,37 @@ void dsp_set(int idx);             // bounds-checked select
 // The dsp_effect_t (and everything it points to) must have static storage
 // duration — the registry keeps the pointer.
 //
-// Course modules (provided separately to course participants) install as a
-// second component, components/rs_course_fx/, and register the same way from
-// rs_course_effects_init(), which runs just before rs_user_effects_init().
+// A self-contained module component (one folder in components/, dropped in
+// or removed as a whole) registers without any shared file: one of its
+// sources names an init function with DSP_EFFECTS_MODULE, and its
+// CMakeLists.txt uses WHOLE_ARCHIVE so the linker keeps it.
+//
+//   static void mymodule_init(void) { dsp_effects_register(&s_fx_mymodule); }
+//   DSP_EFFECTS_MODULE(mymodule, mymodule_init)
+//
+// dsp_effects_init() runs the modules' init functions in order of module
+// name, after channel and before rs_user_effects_init(), so a module's
+// effects list before the sandbox's and a module claims its effect names
+// first. The macro records the function from a constructor, before
+// app_main; nothing runs until dsp_effects_init().
 //
 // dsp_effects_init() registers the core's channel effect into one of these
-// slots first, which leaves 11 for course modules and the sandbox together.
+// slots first, which leaves 11 for modules and the sandbox together.
 #define DSP_USER_EFFECT_SLOTS 12
+#define DSP_EFFECTS_MODULE_SLOTS 8
 bool dsp_effects_register(const dsp_effect_t *fx);   // false = table full/invalid
-void rs_course_effects_init(void);                   // weak no-op; overridden by components/rs_course_fx/
 void rs_user_effects_init(void);                     // weak no-op; overridden by the effects component
+void dsp_effects_add_module(const char *name, void (*init)(void));   // use DSP_EFFECTS_MODULE
+#define DSP_EFFECTS_MODULE(name, init)                                        \
+    __attribute__((constructor)) static void dsp_effects_module_##name(void) \
+    { dsp_effects_add_module(#name, (init)); }
 
 // Position of the current effect within its group, and the group size (used
 // by the LED status: a group with a single effect lights no sub-mode LED).
 void dsp_current_submode(int *pos, int *count);
 
 // ---- Framework hooks (called from audio_dsp.c) ------------------------------
-void dsp_effects_init(void);       // pair gating, channel registration, rs_user_effects_init()
+void dsp_effects_init(void);       // pair gating, channel, modules, rs_user_effects_init()
 void dsp_effects_reset_all(void);  // flush every effect's state (all pairs)
 void dsp_effects_snapshot(void);   // per-block: dispatches to current->snapshot
 

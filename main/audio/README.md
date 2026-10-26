@@ -12,8 +12,9 @@ no blocking, no allocation, no logging inside the sample loop.
   loop, output clipping, load meter, TDM per-pair dispatch + mixdown.
 - `dsp_effects.c/.h`: the effect framework (registry, hooks, config lock,
   per-pair selection, meter) and bypass, the registry's one built-in entry.
-  `dsp_effects_init()` registers channel, then calls `rs_user_effects_init()`
-  for the sandbox. New effects go in `components/rs_student_fx/`; see
+  `dsp_effects_init()` registers channel, runs the init functions of module
+  components (`DSP_EFFECTS_MODULE`), then calls `rs_user_effects_init()` for
+  the sandbox. New effects go in `components/rs_student_fx/`; see
   [docs/ADDING_EFFECTS.md](../../docs/ADDING_EFFECTS.md).
 - `channel_fx.c/.h`: the channel multi-tap delay, laid out like a sandbox
   effect. The file exports its record, `g_fx_channel`, and

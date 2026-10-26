@@ -175,13 +175,31 @@ effect with a text config also gets its own card on the web page (the page
 builds the buttons and the cards from `/api/modes` at load). None of this
 needs a change in `main/`.
 
-Course modules, the effects used in SigPro Labs courses, install the same
-way as a separate component in `components/rs_course_fx/`. They register
-through a second weak hook, `rs_course_effects_init()`, which runs just
-before `rs_user_effects_init()`, so they never touch the sandbox and their
-effects list before yours. `.gitignore` excludes that directory: course
-modules are licensed to course participants only, so they must never be
-committed to a repository you share or publish.
+### Module components
+
+A module is a component of its own: one folder in `components/` that holds
+its sources, its web cards and its `CMakeLists.txt`, added or removed as a
+whole, with no edit anywhere else. One of its sources names an init function
+with `DSP_EFFECTS_MODULE`, declared in `dsp_effects.h`:
+
+```c
+static void mymodule_init(void)
+{
+    dsp_effects_register(&s_fx_mymodule);
+}
+DSP_EFFECTS_MODULE(mymodule, mymodule_init)
+```
+
+Its `CMakeLists.txt` uses `WHOLE_ARCHIVE`, since nothing else references the
+component. `dsp_effects_init()` runs the modules' init functions in order of
+module name, after channel and before `rs_user_effects_init()`, so their
+effects list before the sandbox's, and a module that registers a name first
+keeps it. The next build picks up a new folder by itself.
+
+The course modules used in SigPro Labs courses install this way, one folder
+each. Each carries a `.gitignore` that keeps Git out of its folder: they are
+licensed to course participants only and must never be committed to a
+repository you share or publish.
 
 ### Components outside the tree
 

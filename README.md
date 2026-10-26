@@ -20,8 +20,8 @@ signal path and the other runs everything else.
   settings pick it up automatically
   ([docs/ADDING_EFFECTS.md](docs/ADDING_EFFECTS.md)). The firmware ships with
   bypass and a multi-tap delay and reverb (`channel`). The course modules
-  used in SigPro Labs courses plug in through the same interface, as a
-  separate component in `components/rs_course_fx/` that Git ignores.
+  used in SigPro Labs courses plug in through the same interface, each as a
+  folder of its own in `components/` that Git ignores.
 - Recording and playback. Streaming WAV capture (before or after the DSP) to
   an SD card or a flash partition, and playback mixed into the output, built
   on PSRAM rings that keep all storage I/O off the audio core.

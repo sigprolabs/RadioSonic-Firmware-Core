@@ -89,9 +89,8 @@ managed_components/
 
 
 # =========================
-# Course modules
+# Licensed module components
 # =========================
-# The course modules used in SigPro Labs courses are proprietary. In a working
-# copy of the public core they go in components/rs_course_fx/, which must never
-# be committed there.
-components/rs_course_fx/
+# A module component under a license of its own (the course modules used in
+# SigPro Labs courses, for example) carries a .gitignore of its own that keeps
+# Git out of its folder, so a working copy of this repository never commits it.
