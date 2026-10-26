@@ -10,6 +10,12 @@
 # chip-agnostic project policy only. (The per-chip defaults for seven other
 # chips were blink-template residue, deleted 2026-09-05.)
 
+# Chip target. With no target chosen yet, ESP-IDF takes it from this file, so
+# a configure that runs before `idf.py set-target` (a first Build, or VS
+# Code's compile_commands prompt on a freshly opened folder) uses the ESP32-S3
+# instead of falling back to plain esp32 and failing on esp_tinyusb.
+CONFIG_IDF_TARGET="esp32s3"
+
 # 5. Memory-allocator measurements (the options themselves live in the
 #    esp32s3 file; the paid-for measurement notes live here)
 #    DO NOT trim CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM. Tried 10 -> 6 on

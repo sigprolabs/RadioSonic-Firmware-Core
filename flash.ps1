@@ -300,12 +300,11 @@ if ($env:IDF_PYTHON_ENV_PATH -and (Test-Path "$env:IDF_PYTHON_ENV_PATH\Scripts\p
 }
 Write-Host "Using ESP-IDF v$idfVersion, Python $IdfPython" -ForegroundColor Cyan
 
-# Pin the chip target. Nothing else names it once both the build dir and
-# sdkconfig are gone (-Clean -ResetConfig, or a fresh clone): the defaults
-# files don't set CONFIG_IDF_TARGET, so idf.py falls back to plain esp32 and
-# the configure step fails resolving esp_tinyusb ("Is your current target
-# esp32 set correctly?"). That failure also leaves a build dir that
-# 'idf.py set-target' and 'fullclean' then refuse to touch.
+# Pin the chip target. sdkconfig.defaults names it too (CONFIG_IDF_TARGET);
+# this also covers a defaults file that lost the line. Without either,
+# idf.py falls back to plain esp32 and the configure step fails resolving
+# esp_tinyusb ("Is your current target esp32 set correctly?"), leaving a
+# build dir that 'idf.py set-target' and 'fullclean' then refuse to touch.
 if (-not $env:IDF_TARGET) { $env:IDF_TARGET = "esp32s3" }
 
 # --- Move to the project (this script's own directory) ----------------------
