@@ -1310,19 +1310,22 @@ void linenoiseSetReadCharacteristics(void)
 }
 
 // Raw line input for command handlers (cli_console.h). Bypasses linenoise
-// and the VFS read: bytes are polled straight out of the CDC FIFO, so
-// nothing is echoed, no line-length guard applies (the caller bounds its
-// buffer), and CR, LF or CRLF end a line. Between bursts the loop sleeps on
-// the RX semaphore, so the TinyUSB task's wake-up ends the wait at once. USB
+// and the VFS read: bytes are polled straight out of the CDC FIFO, no
+// line-length guard applies (the caller bounds its buffer), and CR, LF or
+// CRLF end a line, CRLF as one line. A completed line is echoed in one
+// write, so the terminal shows the paste landing (terminals do not echo
+// locally) without the per-byte echo, parse and reply that linenoise and
+// esp_console add to every command. Between bursts the loop sleeps on the
+// RX semaphore, so the TinyUSB task's wake-up ends the wait at once. USB
 // flow control holds the host off while the device FIFO is full, so a paste
-// cannot overrun it; what this path removes is the per-command parse, echo
-// and reply that linenoise and esp_console add to every line.
+// cannot overrun it.
 // (A first version polled cdc0_vfs_read() with O_NONBLOCK set through
 // fcntl(); on the bench that read still blocked, so the idle timeout never
 // fired. Reading the FIFO directly has no such dependency.)
 int console_read_line(char *buf, size_t cap, uint32_t timeout_ms)
 {
     if (!buf || cap == 0) return -1;
+    static bool skip_lf = false;         // a CR ended the last line: the LF of a CRLF follows
     size_t len = 0;
     int ret;
     TickType_t last = xTaskGetTickCount();
@@ -1333,18 +1336,26 @@ int console_read_line(char *buf, size_t cap, uint32_t timeout_ms)
         tinyusb_cdcacm_read(TINYUSB_CDC_ACM_0, &c, 1, &rx);
         if (rx == 1) {
             last = xTaskGetTickCount();
-            if (c == '\n' || c == '\r') { ret = (int)len; break; }
+            bool lf_of_crlf = skip_lf && c == '\n';
+            skip_lf = false;
+            if (lf_of_crlf) continue;
+            if (c == '\n' || c == '\r') { skip_lf = (c == '\r'); ret = (int)len; break; }
             if (len + 1 < cap) buf[len++] = (char)c;   // a longer line is truncated
             continue;
         }
         if (s_reprobe) { ret = -2; break; }            // terminal dropped or reconnected
         if (xTaskGetTickCount() - last >= idle) {       // quiet: a partial line counts as a line
             ret = len ? (int)len : -1;
+            skip_lf = false;
             break;
         }
         xSemaphoreTake(s_cdc0_rx_sem, pdMS_TO_TICKS(20));   // woken early by cdc0_rx_cb
     }
     buf[len] = '\0';
+    if (ret >= 0) {                      // echo the line; the VFS write turns '\n' into CRLF
+        fwrite(buf, 1, len, stdout);
+        fputc('\n', stdout);
+    }
     s_dumb_line_len = 0;                 // linenoise starts its next line fresh
     return ret;
 }

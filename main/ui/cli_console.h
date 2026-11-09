@@ -15,9 +15,9 @@ bool console_usb_attached(void);
 
 // Raw line input for a console command that takes pasted multi-line data (a
 // coefficient list, a config block). Call it only from a cmd hook, which runs
-// in the console task: it reads the console's own byte stream, with no echo
-// and no line editing, up to a newline (CR or LF, so a CRLF paste yields an
-// empty line after each line). Returns the line length without the newline,
+// in the console task: it reads the console's own byte stream, with no line
+// editing, up to a line end (CR, LF or CRLF), and echoes the completed line
+// so the terminal shows it. Returns the line length without the line end,
 // 0 for an empty line, -1 when no byte arrived for timeout_ms (a partial line
 // that has gone quiet is returned as a line instead), -2 when the terminal
 // disconnected. A line longer than cap-1 bytes is truncated; buf is always

@@ -542,7 +542,8 @@ through the same `channel_set_path()` as every other control surface. The
 A command that takes a block of pasted text, such as a coefficient list,
 reads it with `console_read_line()` from `cli_console.h` instead of asking
 for one command per value. Each call returns the next raw line from the
-console, with no echo and no line editing; it returns -1 once the input has
+console, echoing it once it is complete, with no line editing; it returns
+-1 once the input has
 been quiet for the given number of milliseconds, and -2 when the terminal
 has gone. The usual loop collects lines into a buffer until the quiet
 period or a line that says `end`, then hands the text to the effect's own
