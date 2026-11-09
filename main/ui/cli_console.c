@@ -1126,7 +1126,6 @@ static inline int cdc0_fd_clamp(int fd) { return (fd < 0 || fd > 2) ? 2 : fd; }
 static volatile bool s_editing = false;   // true while blocked in linenoise() (log-redraw guard)
 static int s_console_max_line = 256;      // linenoise line-buffer size (from esp_console cfg)
 static int s_dumb_line_len   = 0;         // dumb-mode line length, for the over-read guard
-static volatile bool s_raw_line_read = false;  // console_read_line() active: that guard stands down
 
 static void cdc0_line_state_changed(int itf, cdcacm_event_t *event)
 {
@@ -1281,9 +1280,7 @@ static ssize_t cdc0_vfs_read(int fd, void *dst, size_t size)
     // dumb-mode line one byte short by force-injecting a newline so the buffer can never
     // fill completely. Smart mode (linenoiseEdit) is bounds-safe and skipped; the probe
     // takes the O_NONBLOCK path above, so neither is affected.
-    // console_read_line() bounds its own buffer, so a raw read keeps a long
-    // pasted line whole.
-    bool dumb = linenoiseIsDumbMode() && !s_raw_line_read;
+    bool dumb = linenoiseIsDumbMode();
     for (size_t i = 0; i < got; i++) {
         if (out[i] == '\r') out[i] = '\n';                 // CR -> LF
         if (!dumb) continue;
@@ -1312,32 +1309,31 @@ void linenoiseSetReadCharacteristics(void)
     linenoiseSetReadFunction(cdc0_console_read);
 }
 
-// Raw line input for command handlers (cli_console.h). Bypasses linenoise:
-// nothing is echoed and the dumb-mode line-length guard stands down, so a
-// pasted block arrives exactly as the terminal sent it. Bytes come one at a
-// time from the CDC VFS read above (CR already mapped to LF), and between
-// bursts the loop sleeps on the RX semaphore, so the TinyUSB task's wake-up
-// ends the wait at once. USB flow control holds the host off while the
-// device FIFO is full, so a paste cannot overrun it; what this path removes
-// is the per-command parse, echo and reply that linenoise and esp_console
-// add to every line.
+// Raw line input for command handlers (cli_console.h). Bypasses linenoise
+// and the VFS read: bytes are polled straight out of the CDC FIFO, so
+// nothing is echoed, no line-length guard applies (the caller bounds its
+// buffer), and CR, LF or CRLF end a line. Between bursts the loop sleeps on
+// the RX semaphore, so the TinyUSB task's wake-up ends the wait at once. USB
+// flow control holds the host off while the device FIFO is full, so a paste
+// cannot overrun it; what this path removes is the per-command parse, echo
+// and reply that linenoise and esp_console add to every line.
+// (A first version polled cdc0_vfs_read() with O_NONBLOCK set through
+// fcntl(); on the bench that read still blocked, so the idle timeout never
+// fired. Reading the FIFO directly has no such dependency.)
 int console_read_line(char *buf, size_t cap, uint32_t timeout_ms)
 {
     if (!buf || cap == 0) return -1;
-    int fd = fileno(stdin);
-    int fl = fcntl(fd, F_GETFL);
-    fcntl(fd, F_SETFL, fl | O_NONBLOCK);          // read returns at once on an empty FIFO
-    s_raw_line_read = true;
-
     size_t len = 0;
     int ret;
     TickType_t last = xTaskGetTickCount();
     const TickType_t idle = pdMS_TO_TICKS(timeout_ms);
     for (;;) {
         uint8_t c;
-        if (cdc0_vfs_read(fd, &c, 1) == 1) {
+        size_t rx = 0;
+        tinyusb_cdcacm_read(TINYUSB_CDC_ACM_0, &c, 1, &rx);
+        if (rx == 1) {
             last = xTaskGetTickCount();
-            if (c == '\n') { ret = (int)len; break; }
+            if (c == '\n' || c == '\r') { ret = (int)len; break; }
             if (len + 1 < cap) buf[len++] = (char)c;   // a longer line is truncated
             continue;
         }
@@ -1349,9 +1345,7 @@ int console_read_line(char *buf, size_t cap, uint32_t timeout_ms)
         xSemaphoreTake(s_cdc0_rx_sem, pdMS_TO_TICKS(20));   // woken early by cdc0_rx_cb
     }
     buf[len] = '\0';
-    s_raw_line_read = false;
     s_dumb_line_len = 0;                 // linenoise starts its next line fresh
-    fcntl(fd, F_SETFL, fl);
     return ret;
 }
 
