@@ -542,14 +542,16 @@ through the same `channel_set_path()` as every other control surface. The
 A command that takes a block of pasted text, such as a coefficient list,
 reads it with `console_read_line()` from `cli_console.h` instead of asking
 for one command per value. Each call returns the next raw line from the
-console, echoing it once it is complete, with no line editing; it returns
--1 once the input has
-been quiet for the given number of milliseconds, and -2 when the terminal
-has gone. The usual loop collects lines into a buffer until the quiet
-period or a line that says `end`, then hands the text to the effect's own
-`load_text`, so the console accepts exactly the text the web card and
-`settings` do. Allow a long wait for the first line and a short one after
-it. Only a `cmd` hook may call it: it reads the console task's own byte
+console, echoing the bytes as they arrive, with no line editing. Its two
+times are the wait for the first byte and the quiet time after any byte:
+it returns -1 when the input has gone quiet, leaving an unfinished last
+line in the buffer so a paste without a final newline is kept, and -2 when
+the terminal has gone. The usual loop collects lines into a buffer until
+that -1 or a line that says `end`, takes the unfinished line along, then
+hands the text to the effect's own `load_text`, so the console accepts
+exactly the text the web card and `settings` do. Give the first line a
+long wait, since the user has still to paste, and the rest a short one.
+Only a `cmd` hook may call it: it reads the console task's own byte
 stream, and a paste of several kilobytes needs a heap buffer, not a stack
 one.
 

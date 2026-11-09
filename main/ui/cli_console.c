@@ -1312,30 +1312,34 @@ void linenoiseSetReadCharacteristics(void)
 // Raw line input for command handlers (cli_console.h). Bypasses linenoise
 // and the VFS read: bytes are polled straight out of the CDC FIFO, no
 // line-length guard applies (the caller bounds its buffer), and CR, LF or
-// CRLF end a line, CRLF as one line. A completed line is echoed in one
-// write, so the terminal shows the paste landing (terminals do not echo
-// locally) without the per-byte echo, parse and reply that linenoise and
-// esp_console add to every command. Between bursts the loop sleeps on the
-// RX semaphore, so the TinyUSB task's wake-up ends the wait at once. USB
-// flow control holds the host off while the device FIFO is full, so a paste
-// cannot overrun it.
+// CRLF end a line, CRLF as one. Whenever the FIFO runs dry the bytes
+// received so far are echoed, so the terminal shows a paste as it lands
+// (terminals do not echo locally) without the per-byte echo, parse and
+// reply that linenoise and esp_console add to every command. Two times:
+// wait_ms is allowed for the first byte, and once bytes have arrived
+// idle_ms of quiet ends the input: the call returns -1 with any unfinished
+// line left in buf, so a paste without a final newline costs one quiet
+// period, not two. Between bursts the loop sleeps on the RX semaphore, so
+// the TinyUSB task's wake-up ends the wait at once. USB flow control holds
+// the host off while the device FIFO is full, so a paste cannot overrun it.
 // (A first version polled cdc0_vfs_read() with O_NONBLOCK set through
 // fcntl(); on the bench that read still blocked, so the idle timeout never
 // fired. Reading the FIFO directly has no such dependency.)
-int console_read_line(char *buf, size_t cap, uint32_t timeout_ms)
+int console_read_line(char *buf, size_t cap, uint32_t wait_ms, uint32_t idle_ms)
 {
     if (!buf || cap == 0) return -1;
     static bool skip_lf = false;         // a CR ended the last line: the LF of a CRLF follows
-    size_t len = 0;
+    size_t len = 0, echoed = 0;
     int ret;
-    TickType_t last = xTaskGetTickCount();
-    const TickType_t idle = pdMS_TO_TICKS(timeout_ms);
+    TickType_t last  = xTaskGetTickCount();
+    TickType_t limit = pdMS_TO_TICKS(wait_ms);      // for the first byte; idle_ms after it
     for (;;) {
         uint8_t c;
         size_t rx = 0;
         tinyusb_cdcacm_read(TINYUSB_CDC_ACM_0, &c, 1, &rx);
         if (rx == 1) {
-            last = xTaskGetTickCount();
+            last  = xTaskGetTickCount();
+            limit = pdMS_TO_TICKS(idle_ms);
             bool lf_of_crlf = skip_lf && c == '\n';
             skip_lf = false;
             if (lf_of_crlf) continue;
@@ -1343,19 +1347,19 @@ int console_read_line(char *buf, size_t cap, uint32_t timeout_ms)
             if (len + 1 < cap) buf[len++] = (char)c;   // a longer line is truncated
             continue;
         }
+        // The FIFO is empty: show what has arrived, then wait for more.
+        if (echoed < len) { fwrite(buf + echoed, 1, len - echoed, stdout); echoed = len; }
         if (s_reprobe) { ret = -2; break; }            // terminal dropped or reconnected
-        if (xTaskGetTickCount() - last >= idle) {       // quiet: a partial line counts as a line
-            ret = len ? (int)len : -1;
+        if (xTaskGetTickCount() - last >= limit) {      // quiet: the input is over for now
+            ret = -1;                                   // an unfinished line stays in buf
             skip_lf = false;
             break;
         }
         xSemaphoreTake(s_cdc0_rx_sem, pdMS_TO_TICKS(20));   // woken early by cdc0_rx_cb
     }
     buf[len] = '\0';
-    if (ret >= 0) {                      // echo the line; the VFS write turns '\n' into CRLF
-        fwrite(buf, 1, len, stdout);
-        fputc('\n', stdout);
-    }
+    if (echoed < len) fwrite(buf + echoed, 1, len - echoed, stdout);
+    if (ret >= 0 || len) fputc('\n', stdout);   // end the echoed line (the VFS write makes it CRLF)
     s_dumb_line_len = 0;                 // linenoise starts its next line fresh
     return ret;
 }
