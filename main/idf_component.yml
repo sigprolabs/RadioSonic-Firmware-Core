@@ -2,10 +2,21 @@
 # Copyright (c) 2026 SigPro Labs, LLC
 ## IDF Component Manager manifest
 ## Managed dependencies for the `main` component.
+##
+## Every version here is an exact pin, and dependencies.lock is committed.
+## The component manager re-solves whenever the set of manifests changes (a
+## component folder with its own idf_component.yml is added under
+## components/, for example). With exact pins that re-solve reproduces the
+## versions already on disk, so the component manager downloads only what is
+## new and never deletes and recopies a component that is already there. A
+## version bump is a deliberate commit that changes the pin and the lock
+## together. See docs/ADDING_EFFECTS.md, "Components outside the tree".
 dependencies:
   ## TinyUSB stack + Espressif CDC-ACM/console/MSC wrappers.
   ## Provides the native-USB CDC console (replaces USB-Serial-JTAG) and the
   ## fast raw-binary transfer path. See docs/SERIAL_XFER.md and the migration
-  ## plan. esp_tinyusb pulls in the underlying `tinyusb` component.
-  espressif/esp_tinyusb: "^2.2.0"
-
+  ## plan.
+  espressif/esp_tinyusb: "==2.4.0"
+  ## The TinyUSB stack esp_tinyusb wraps. esp_tinyusb only asks for
+  ## >=0.17.0~2, so it is pinned here to keep a re-solve from moving it.
+  espressif/tinyusb: "==0.21.0~2"

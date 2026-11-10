@@ -223,6 +223,21 @@ configure used and reconfigures when the variables or the version differ.
 With `idf.py` alone, run `idf.py reconfigure` after you set, change or clear
 them.
 
+A component that declares managed dependencies of its own in an
+`idf_component.yml` pins each one to an exact version (`"==1.8.2"`, not
+`"^1.8"`), as `main/idf_component.yml` does. A new manifest changes the set of
+manifests, and the component manager then solves the dependencies again. With
+exact pins the new solution matches the versions already in
+`managed_components/`, so only the new dependency is downloaded. With a range,
+the re-solve can move a dependency that is already there to a newer release,
+and the component manager deletes that folder and copies the new release in.
+On Windows that delete fails when an editor or an indexer holds a file in the
+folder open, and the half-deleted folder then fails every later configure
+with an integrity error (".component_hash ... does not exist"); delete the
+folder under `managed_components/` by hand and configure again. To move to a
+newer release of a dependency, change its pin and commit the regenerated
+`dependencies.lock` with it.
+
 ---
 
 ## Worked example: the channel effect
