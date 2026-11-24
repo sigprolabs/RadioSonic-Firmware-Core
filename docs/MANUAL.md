@@ -3,10 +3,10 @@
 <div class="cover" align="center">
 <p class="cover-name">RadioSonic™</p>
 <p class="cover-title">Firmware CLI Manual</p>
-<p class="cover-edition">Core Edition · Firmware 0.9.1</p>
+<p class="cover-edition">Core Edition · Firmware 0.9.3</p>
 <img class="cover-board" src="images/cover/radiosonic_board.webp" alt="RadioSonic signal processing platform" width="460">
 <p class="cover-by">SigPro Labs, LLC</p>
-<p class="cover-meta">October 2026<br>Copyright © 2026 SigPro Labs, LLC. Licensed under the MIT License.<br>RadioSonic and SigPro Labs are trademarks of SigPro Labs, LLC.</p>
+<p class="cover-meta">November 2026<br>Copyright © 2026 SigPro Labs, LLC. Licensed under the MIT License.<br>RadioSonic and SigPro Labs are trademarks of SigPro Labs, LLC.</p>
 </div>
 
 # RadioSonic™ Firmware CLI Manual (Core Edition)
